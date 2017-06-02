@@ -2,10 +2,12 @@
 QImportP
 
     On the Web:
-        http://www.aczoom.com/consumer/import-prices-script-for-quicken/
+        http://www.aczoom.com/tech/import-prices-script-for-quicken/
+    Source Code:
+        https://github.com/avinash311/QImportP/
 
 This Windows JScript program:
-    1) gets (downloads) current and historical quotes from Yahoo,
+    1) gets (downloads) current quotes from Yahoo,
     and if /automate is specified as an argument:
       2) starts Quicken (if not already started - but this is not reliable)
       3) sends keys to import the prices using Quicken's Import Prices command.
@@ -19,19 +21,14 @@ This Windows JScript program:
     %TMP% or %TEMP%, or C:\WINDOWS\TEMP, whichever setting is found first.
 
 
-Usage: QImportP.wsf [/noget] [/automate] [/days:value] [/s:value]
-                    [/daily] [/weekly] [/monthly] [/v:value]
+Usage: QImportP.wsf [/noget] [/automate] [/s:value] [/v:value]
                     [/dmy] [/div:value] [/help]
 
 Options:
 
 noget    : Do not get quotes (from Yahoo)
 automate : Import prices into Quicken. If necessary, tries starting Quicken.
-days     : Get historical quotes for these many number of days (default 7)
 s        : List of comma-separated symbols for pricing
-daily    : Download daily prices (default)
-weekly   : Download weekly prices
-monthly  : Download monthly prices
 v        : Verbose level - 0 (default), 1, 2, or 3
 dmy      : Use dd/mm/yy for date, for use outside USA
 div      : Divide amounts by value, for converting pence into pounds, or any other division
@@ -43,7 +40,7 @@ help     : /? or /h or /help - Print usage description
 
     Examples: 
     cscript QImportP.wsf /s:"CSCO,GE,FMAGX,VFINX"
-       Will get prices for above list, for today and 7 days in the past.
+       Will get current prices for above list.
        Downloaded prices are stored in QImportP.csv
 
     cscript QImportP.wsf /s:"CSCO,GE,^DJI,FMAGX,VFINX" /noget
@@ -54,8 +51,8 @@ help     : /? or /h or /help - Print usage description
        file, and start up quicken, and use Windows SendKeys automation
        to import that file into the Quicken Portfolio View.
 
-    cscript QImportP.wsf /s:"CSCO,GE,FMAGX,VFINX" /days:0 /automate
-       Will get prices for above list, latest prices only, no historial data.
+    cscript QImportP.wsf /s:"CSCO,GE,FMAGX,VFINX" /automate
+       Will get prices for above list, latest prices only.
        Downloaded prices are stored in QImportP.csv
        Will start up quicken, and use Windows SendKeys automation
        to import that file into the Quicken Portfolio View.
@@ -193,7 +190,7 @@ new command with the old name "Quicken Family Lawyer". But the toolbar
 text may show the name typed in the previous step.
   
 ===========================================================================
-Copyright (c) 2009-2010,2015 ACZoom.com
+Copyright (c) 2009-2010,2015,2017 ACZoom.com
 No Rights Reserved.
 Placed into Public Domain.
 May have calls into external web APIs, which will have 
