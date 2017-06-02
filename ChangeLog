@@ -1,3 +1,18 @@
+2015-04-09
+
+* Version 0.6
+
+* Handle new text end-of-line for the /days:0 option URL download.finance.yahoo.com
+(use just \n for line splitting, instead of \r\n used previously).
+
+* Do not mix the two URLs: download.finance.yahoo.com (/days:0) and
+ichart.finance.yahoo.com (/days:1 or higher). They may return values
+in different units (pence vs pounds, for example in UK).
+Now depending on value of /days:value, only one of the URLs is called.
+
+* Removed /div100 option and replaced with general /div:value argument.
+So replacement is /div:100 and can specify any divisor.
+
 2009-11-24
 
 * Version 0.5
@@ -6,7 +21,7 @@
 Renamed QImportP.bat.txt to QImportP.cmd.txt
 
 * Support for Vista64 based on comment at:
-http://www.acplace.net/tools/import-prices-script-for-quicken#comment-64
+http://www.aczoom.com/archive-2016/tools/import-prices-script-for-quicken#comment-64
 Still, it is best to have Quicken started before running script for things
 like password-protected Quicken files.
 
@@ -32,7 +47,7 @@ Find dialog if a register is open.
 
 * Option added for GBP (UK, and probably other places too). Use
 /gbp option.  Updates from:
-http://www.acplace.net/tools/import-prices-script-for-quicken#comment-6
+http://www.aczoom.com/archive-2016/tools/import-prices-script-for-quicken#comment-6
 
 
 2009-03-22

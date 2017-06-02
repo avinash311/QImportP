@@ -2,7 +2,7 @@
 QImportP
 
     On the Web:
-        http://www.acplace.net/tools/import-prices-script-for-quicken
+        http://www.aczoom.com/consumer/import-prices-script-for-quicken/
 
 This Windows JScript program:
     1) gets (downloads) current and historical quotes from Yahoo,
@@ -21,7 +21,7 @@ This Windows JScript program:
 
 Usage: QImportP.wsf [/noget] [/automate] [/days:value] [/s:value]
                     [/daily] [/weekly] [/monthly] [/v:value]
-                    [/dmy] [/div100] [/help]
+                    [/dmy] [/div:value] [/help]
 
 Options:
 
@@ -34,7 +34,7 @@ weekly   : Download weekly prices
 monthly  : Download monthly prices
 v        : Verbose level - 0 (default), 1, 2, or 3
 dmy      : Use dd/mm/yy for date, for use outside USA
-div100   : Divide amounts by 100, for converting pence into pounds
+div      : Divide amounts by value, for converting pence into pounds, or any other division
 help     : /? or /h or /help - Print usage description
    Example: cscript QImportP.wsf /s:"C,FMAGX" /automate
 
@@ -193,7 +193,7 @@ new command with the old name "Quicken Family Lawyer". But the toolbar
 text may show the name typed in the previous step.
   
 ===========================================================================
-Copyright (c) 2009-2010, ACPlace.Net
+Copyright (c) 2009-2010,2015 ACZoom.com
 No Rights Reserved.
 Placed into Public Domain.
 May have calls into external web APIs, which will have 

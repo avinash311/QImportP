@@ -13,10 +13,11 @@ setlocal
 @REM /days:0   Gets current or last day's prices only
 @REM /daily (default) or /weekly or /monthly
 @REM       download daily prices (default), or weekly prices, or monthly prices
+@REM /div:100  Divide all prices by 100 (can use any number instead of 100)
 @REM /v:       Verbose level - 0 (default), 1, 2, or 3
 @REM --- edit the following lines, filling in symbols and correcting args
 set SYMBOLS="C,CSCO"
-set ARGUMENTS=/automate /days:7 /daily
+set ARGUMENTS=/automate /days:0 /daily
 set WSFPATH=\bin\QImportP.wsf
 @REM --- 
 @REM

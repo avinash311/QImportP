@@ -1,6 +1,6 @@
 # Makefile for QImportP
 
-VERSION = 0.5.0
+VERSION = 0.6.0
 # ZIPVERSION = 050
 # for 2.0.0, use 200, etc - note - lines above should have no spaces at end
 

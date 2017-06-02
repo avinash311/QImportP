@@ -3,13 +3,13 @@
 <job id="QImportP">
 <?job error="true" debug="true"?>
 <resource id="version">
-    0.5, 2009-11-23
+    0.6, 2015-04-09
 </resource>
 <resource id="homepage">
-    http://www.acplace.net/tools/import-prices-script-for-quicken
+    http://www.aczoom.com/consumer/import-prices-script-for-quicken/
 </resource>
 <resource id="copyright">
-    Copyright (c) 2009, ACPlace.Net
+    Copyright (c) 2009,2015 ACZoom.com
     No Rights Reserved.
     Placed into Public Domain.
     May have calls into external web APIs, which will have 
@@ -37,7 +37,7 @@
         helpstring = "Import prices into Quicken. If necessary tries starting Quicken."
         type = "simple" required = "false"/>
     <named name = "days"
-        helpstring = "Get historical quotes for these many number of days (default 7)"
+        helpstring = "Get historical quotes for these many number of days (default 7). Use /days:0 for current rates."
         type = "string" required = "false"/>
     <named name = "s"
         helpstring = "List of comma-separated symbols for pricing"
@@ -57,9 +57,9 @@
     <named name = "dmy"
         helpstring = "Use dd/mm/yy for date, for use outside USA"
         type = "simple" required = "false"/>
-    <named name = "div100"
-        helpstring = "Divide amounts by 100, for converting pence into pounds"
-        type = "simple" required = "false"/>
+    <named name = "div"
+        helpstring = "Divide amounts by value, use /div:100 for converting pence into pounds"
+        type = "string" required = "false"/>
     <named name = "help"
         helpstring = "/? or /h or /help - Print usage description"
         type = "simple" required = "false"/>
@@ -88,7 +88,6 @@
 var MS_IN_DAY = 24*60*60*1000; // milliseconds in a day
 var TODAY = new Date();
 var JVER = Number(ScriptEngineMajorVersion() + "." + ScriptEngineMinorVersion()); // is 5.7 on Windows XP
-var REGISTRY_KEY = "HKCU\\Software\\ACPlace.Net\\QImportP"; // root key
 var HTTP_STATUS_OK = 200;
 //-------------------------------------------------------
 // INPUT parameters
@@ -98,7 +97,8 @@ var MESSAGE_LEVEL = 0; // 0,1,2,3... verbosity, debug levels
 var ERROR_LEVEL = 0, WARNING_LEVEL = 1, INFO_LEVEL = 2,  DEBUG_LEVEL = 3;
 var FREQ_DAILY = 'daily', FREQ_WEEKLY = 'weekly', FREQ_MONTHLY = 'monthly';
 var SYMBOLS_DEFAULT = 'C,FMAGX';
-// numdays: how many days in past - should be 1 or greater for historical data
+// numdays: how many days in past - should be 1 or greater for historical data,
+// and 0 for latest data only.
 var NUMDAYS_DEFAULT = 7;
 var QEXE_DEFAULT = Array(
         "%ProgramFiles%\\Quicken\\qw.exe", // Windows XP, Vista 64/32, all.
@@ -110,7 +110,7 @@ var QEXE_DEFAULT = Array(
 var QTITLE = 'Quicken'; // Quicken App Window Title - prefix
 var OUT_FILENAME = 'QImportP.csv';
 var DDMMYY = false; // use dd/mm/yy for dates
-var DIV100 = false; // amounts are divided by 100, useful for handling some UK funds
+var DIV_NUM = 0; // amounts are divided by this (if non-zero), useful for handling some UK funds
 //var OUT_FILENAME = "Quicken-Prices-" + trunc2(TODAY.getMonth() + 1) + trunc2(TODAY.getDate()) + trunc2(TODAY.getFullYear()) + ".csv";
 
 //-------------------------------------------------------
@@ -144,8 +144,10 @@ function UrlHistForDate(d, freq) {
         var items = line.split(",", 7);
         var ret = "";
         // items[4] may be in pence and imports are in pounds, UK issue
-        if (DIV100) {
-            items[4] = Math.round(parseFloat(items[4])*100)/10000;
+        // May be used for other coversions too - exchange rate, for example.
+        if (DIV_NUM > 0) {
+            // The * 10000)/10000 is to get upto 4 decimal places precision
+            items[4] = Math.round(parseFloat(items[4])/DIV_NUM * 10000)/10000;
         }
         var ymd = items[0].split("-", 3);
         if (ymd.length == 3) {
@@ -167,8 +169,6 @@ function UrlHistForDate(d, freq) {
 // gets data like this - note that some dates may be today, some in past!
 // "C",1.02,"3/5/2009",1.11,0.97,563658432
 // "VIGRX",17.63,"3/4/2009",N/A,N/A,N/A
-// this function may not needed - may be simpler to just use historical
-// data which contains all known closing prices.
 function UrlCurrForSymbols(ss) {
      this.url = "http://download.finance.yahoo.com/d/quotes.csv?f=sl1d1hgv&e=.csv&s=" + ss;
     this.toUrl = function () {
@@ -182,11 +182,13 @@ function UrlCurrForSymbols(ss) {
         var ret = "";
         if (items[0] && items[1] && items[2]) {
             // items[1] may be in pence and imports are in pounds, UK issue
-            if (DIV100) {
-                items[1] = Math.round(parseFloat(items[1])*100)/10000;
+            // May be used for other coversions too - exchange rate, for example.
+            if (DIV_NUM > 0) {
+                // The * 10000)/10000 is to get upto 4 decimal places precision
+                items[1] = Math.round(parseFloat(items[1])/DIV_NUM * 10000)/10000;
             }
             // the date format returned is "M/dd/yyyy" with quotes
-            // so here’s an extra process which allows easy switch
+            // so here's an extra process which allows easy switch
             // between month and day, needed for non-US processing
             var ymd = items[2].replace(/\"/g,"");
             ymd = ymd.split("/", 3);
@@ -213,6 +215,7 @@ message("TODAY = " + TODAY.toDateString(), INFO_LEVEL);
 var argsNamed = WScript.Arguments.Named;
 
 if (getArgVal('?', argsNamed, false)
+        || getArgVal('div100', argsNamed, false) // old arg, no longer used
         || getArgVal('h', argsNamed, false)
         || getArgVal('help', argsNamed, false)) {
     WScript.Arguments.ShowUsage();
@@ -221,8 +224,8 @@ if (getArgVal('?', argsNamed, false)
 
 MESSAGE_LEVEL = getArgVal('v', argsNamed, 0); // 0,1,2,3... verbosity levels
 
-// for UK processing, /div100 and /dmy may be present
-DIV100 = getArgVal('div100', argsNamed, false);
+// for UK processing, /div:100 and /dmy may be present
+DIV_NUM = getArgVal('div', argsNamed, 0);
 DDMMYY = getArgVal('dmy', argsNamed, false);
 
 // setup output file
@@ -250,7 +253,8 @@ message("QImportP: Done with script.", DEBUG_LEVEL);
 WScript.Quit(); //------------------------------- QUIT
 
 //---------------------------------------------------------------------
-// get both historical and current prices for given list of symbols
+// get both historical and current prices for given list of symbols,
+// depending on input args.
 function getPrices(symbols, numDays, freq, outFilePath) {
 
     var error = false;
@@ -297,23 +301,30 @@ function getPrices(symbols, numDays, freq, outFilePath) {
     }
 
     // get current prices for all symbols, and write to output file
-    var urlcurr = new UrlCurrForSymbols( symbols );
-    message("URL=" + urlcurr, INFO_LEVEL);
-    WinHttpReq.Open("GET", urlcurr.toUrl(), false);
-    WinHttpReq.Send();
-    if (WinHttpReq.Status == HTTP_STATUS_OK) { // 200
-        message(WinHttpReq.ResponseText, DEBUG_LEVEL);
-        var lines = WinHttpReq.ResponseText.split("\r\n");
-        for(var i in lines) {
-            var out = urlcurr.toQuicken(lines[i]);
-            if (out) {
-                outFile.WriteLine(out);
+    // only do this if we did not get any historical dates. This is necessary
+    // because the urls used are different, and the prices may be differently scaled
+    // too (in UK, one url returns pence values, other returns pounds, for example).
+    if (numDays <= 0) {
+        var urlcurr = new UrlCurrForSymbols( symbols );
+        message("URL=" + urlcurr, INFO_LEVEL);
+        WinHttpReq.Open("GET", urlcurr.toUrl(), false);
+        WinHttpReq.Send();
+        if (WinHttpReq.Status == HTTP_STATUS_OK) { // 200
+            message(WinHttpReq.ResponseText, DEBUG_LEVEL);
+            // Was \r\n before April 2015, but that broke, so now just use \n
+            var lines = WinHttpReq.ResponseText.split("\n");
+            for(var i in lines) {
+                var out = urlcurr.toQuicken(lines[i]);
+                message("lines i------ " + i + " " + lines[i] + " out=" + out, DEBUG_LEVEL);
+                if (out) {
+                    outFile.WriteLine(out);
+                }
             }
+        } else {
+            error = true;
+            message("Error: could not retreive latest prices for symbols="+symbols, ERROR_LEVEL);
+            message("  Code " + WinHttpReq.Status + " retrieving " + urlcurr.toUrl(), ERROR_LEVEL);
         }
-    } else {
-        error = true;
-        message("Error: could not retreive latest prices for symbols="+symbols, ERROR_LEVEL);
-        message("  Code " + WinHttpReq.Status + " retrieving " + urlcurr.toUrl(), ERROR_LEVEL);
     }
 
     // done with file and http
@@ -461,39 +472,6 @@ function getArgVal(what, args, defVal) {
         }
     }
     message("getArgVal:  what=" + what + "  val=" + val, DEBUG_LEVEL);
-    return val;
-}
-
-//---------------------------------------------------------------------
-// XXX TODO - add registry support so don't have to provide command line args all the time
-function getRegVal(what) {
-    var key = REGISTRY_KEY + "\\" + what;
-    var val = WSH.RegRead(key);
-    message("Registry " +  key + "=" + val, DEBUG_LEVEL);
-}
-
-function setRegVal(what, val) {
-    var key = REGISTRY_KEY + "\\" + what;
-    WSH.RegWrite(key, val, "REG_SZ");
-    message("Wrote Registry " +  key + "=" + val, DEBUG_LEVEL);
-}
-
-function deleteRegVal() { // delete all registry values
-    var key = REGISTRY_KEY;
-    WSH.RegDelete(key);
-}
-
-function getQEXERegVal(defVal) { // NOTUSED? XP, Vista, Win7, all have different keys.
-// No need to use this, just use multiple values for QEXE_DEFAULT
-    var key = "HKLM\\SOFTWARE\\Intuit\\Quicken\\ExePath";
-    var val = defVal;
-    try {
-        val = WSH.RegRead(key);
-    } catch(e) {
-        message("Error: failed to find Quicken Registry Value " +  key + ", " + e.description, ERROR_LEVEL);
-        message("       Will try default value " +  val, ERROR_LEVEL);
-    }
-    message("Using getQEXE value of " + val, DEBUG_LEVEL);
     return val;
 }
 
