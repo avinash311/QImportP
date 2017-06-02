@@ -1,0 +1,23 @@
+@REM batch script to call QImportP.wsf, with appropriate arguments
+@REM Edit the list of symbols and arguments as needed.
+@REM Additional one-time arguments can also be passed to this script,
+@REM and those will be tacked on the call to the QImportP.wsf script.
+@REM
+setlocal
+@REM
+@REM --- 
+@REM /s:       symbols comma separated names, like "C,CSCO"
+@REM /noget    Do not get quotes (from Yahoo) 
+@REM /automate Start Quicken and import prices into Quicken
+@REM /days:    Get historical quotes for these many number of days (default 7)
+@REM /days:0   Gets current or last day's prices only
+@REM /daily (default) or /weekly or /monthly
+@REM       download daily prices (default), or weekly prices, or monthly prices
+@REM /v:       Verbose level - 0 (default), 1, 2, or 3
+@REM --- edit the following lines, filling in symbols and correcting args
+set SYMBOLS="C,CSCO"
+set ARGUMENTS=/automate /days:7 /daily
+set WSFPATH=\bin\QImportP.wsf
+@REM --- 
+@REM
+cscript %WSFPATH%   /s:%SYMBOLS%   %ARGUMENTS%   %*

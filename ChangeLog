@@ -1,0 +1,53 @@
+2009-11-24
+
+* Version 0.5
+
+* Example QImportP.cmd.txt was missing a @REM after /automate help line.
+Renamed QImportP.bat.txt to QImportP.cmd.txt
+
+* Support for Vista64 based on comment at:
+http://www.acplace.net/tools/import-prices-script-for-quicken#comment-64
+Still, it is best to have Quicken started before running script for things
+like password-protected Quicken files.
+
+* README updated with instructions on how to add shortcut to Start menu,
+which may be preferable to hacking Quicken.ini file.
+
+2009-06-01
+
+* Version 0.4.0
+
+* Automation now handles file/directory names with special characters
+like ~ + ! ^ {SPACE} {TAB}
+
+* README updated with instructions on how to add toolbar icon
+to run QImportP.cmd.
+
+2009-05-19
+
+* Version 0.3.0
+
+* Automation change to use ^u instead of alt-i since alt-i brings up 
+Find dialog if a register is open.
+
+* Option added for GBP (UK, and probably other places too). Use
+/gbp option.  Updates from:
+http://www.acplace.net/tools/import-prices-script-for-quicken#comment-6
+
+
+2009-03-22
+
+* Version 0.2.0
+
+* QImportP.bat.txt - Added example batch script for end-user editing.
+* new options /daily  /weekly  /monthly  /days:n  /help
+
+2009-03-14
+
+* Version 0.1.0
+
+* Created script.
+
+===========================================================================
+QImportP.wsf
+===========================================================================

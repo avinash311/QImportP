@@ -1,0 +1,201 @@
+===========================================================================
+QImportP
+
+    On the Web:
+        http://www.acplace.net/tools/import-prices-script-for-quicken
+
+This Windows JScript program:
+    1) gets (downloads) current and historical quotes from Yahoo,
+    and if /automate is specified as an argument:
+      2) starts Quicken (if not already started - but this is not reliable)
+      3) sends keys to import the prices using Quicken's Import Prices command.
+      If Quicken file is protected with Password, the automation will not work
+      unless Quicken is started and the password entered before running
+      this script. In this case, make a short-cut from the Start Menu to
+      this script with appropriate arguments, and use that start menu command
+      to run this script after Quicken has been started.
+
+    Downloaded prices are stored in file QImportP.csv, in the directory
+    %TMP% or %TEMP%, or C:\WINDOWS\TEMP, whichever setting is found first.
+
+
+Usage: QImportP.wsf [/noget] [/automate] [/days:value] [/s:value]
+                    [/daily] [/weekly] [/monthly] [/v:value]
+                    [/dmy] [/div100] [/help]
+
+Options:
+
+noget    : Do not get quotes (from Yahoo)
+automate : Import prices into Quicken. If necessary, tries starting Quicken.
+days     : Get historical quotes for these many number of days (default 7)
+s        : List of comma-separated symbols for pricing
+daily    : Download daily prices (default)
+weekly   : Download weekly prices
+monthly  : Download monthly prices
+v        : Verbose level - 0 (default), 1, 2, or 3
+dmy      : Use dd/mm/yy for date, for use outside USA
+div100   : Divide amounts by 100, for converting pence into pounds
+help     : /? or /h or /help - Print usage description
+   Example: cscript QImportP.wsf /s:"C,FMAGX" /automate
+
+    This program has to be run in a Windows Console terminal,
+    or a short-cut can be manually created to run with required arguments.
+
+    Examples: 
+    cscript QImportP.wsf /s:"CSCO,GE,FMAGX,VFINX"
+       Will get prices for above list, for today and 7 days in the past.
+       Downloaded prices are stored in QImportP.csv
+
+    cscript QImportP.wsf /s:"CSCO,GE,^DJI,FMAGX,VFINX" /noget
+       Will do nothing.
+
+    cscript QImportP.wsf /s:"CSCO,GE,FMAGX,VFINX" /noget /automate
+       Will not get any prices, but will use existing QImportP.csv
+       file, and start up quicken, and use Windows SendKeys automation
+       to import that file into the Quicken Portfolio View.
+
+    cscript QImportP.wsf /s:"CSCO,GE,FMAGX,VFINX" /days:0 /automate
+       Will get prices for above list, latest prices only, no historial data.
+       Downloaded prices are stored in QImportP.csv
+       Will start up quicken, and use Windows SendKeys automation
+       to import that file into the Quicken Portfolio View.
+
+  QImportP.cmd.txt :
+    Edit this example script to call QImportP.wsf with the list of symbols,
+    whether to run automation, any other arguments, etc. Rename your copy
+    to QImportP.cmd
+    
+    Then copy both QImportP.wsf and QImportP.cmd to a folder
+    from where you are going to run the script.
+
+    Running "QImportP" will then run the cmd script.
+
+  Automation :
+    As mentioned above, the script accepts a /automate argument. This can
+    be used to make the script import the prices directly into Quicken.
+    This is a fragile mechanism, here are all the things to try if
+    it is not working:
+
+    1) On startup, Quicken must open up with the correct file. Quicken
+    will start by opening the file that was used last time it was closed,
+    so ensure that the correct file will be opened.
+
+    2) If you have password-enabled your Quicken file, run Quicken first,
+    enter your password, and then run this QImportP script with /automate.
+    It is not possible or useful to have this script run Quicken in this
+    case.
+
+    3) Caps-Lock key should be off.
+
+    4) Do not press any keys while the script is running. It takes
+    around 8 seconds to complete the automation work. This can be speeded
+    up by removing the delays inserted in the code if needed, but
+    given that around 8 key sequences are sent, this allows the user to
+    follow Quicken action on the screen in response to the keys. 
+
+===========================================================================
+Adding a menu short-cut
+
+This method works on Windows XP as well as Vista, and is a better way
+to automate the script rather than depending on the script to start Quicken.
+
+First: create a customized QImportP.cmd file, and copy that and the
+  QImportP.wsf to a specific folder. Test that running QImportP.cmd from any
+  folder works correctly.
+  Create the QImport.cmd script using the example QImportP.cmd.txt file.
+
+Second: Using Explorer, open the folder, and drag-and-drop the QImport.cmd
+  file onto the start menu - this will create a custom menu link.
+
+Enable drag and drop operation to add custom menu links to Start Menu.
+Note that drag-and-drop should be enabled for this to work, here are the
+steps to do that if that does not work.
+
+Right Click on "Start" Menu
+Click "Properties"
+Click "Start Menu" Radio Button
+Click on "Customize" Button
+Click on "Advanced" Tab
+If the "Enable dragging and dropping" Checkbox is not checked, drag-and-drop
+will not work.
+Click "Enable dragging and dropping" Checkbox.  Click "Ok" and then "Apply".
+
+===========================================================================
+Adding a button on the Quicken Toolbar
+
+[This works for Windows XP and Vista. The above section showing how to add
+ the QImportP.cmd to the Start menu is an alternative, avoids editing
+ .ini files which can be dangerous.]
+
+If you are not starting "Quicken Home Inventory" or "Quicken Family Lawyer"
+from within Quicken, you can use one of these to start QImportP process.
+This has been tested for Quicken 2006.
+
+First: create a customized QImportP.cmd file, and copy that the
+  QImportP.wsf to a specific folder. Test that running QImportP.cmd from any
+  folder works correctly.
+
+Second: edit QUICKEN.INI
+  Assuming "Quicken Family Lawyer" is what can be used to start QImportP,
+  find your Quicken.ini, and edit it.
+  IMPORTANT: back up your Quicken.ini in case of problems editing.
+
+  In Vista, the file may be here:
+  C:\Users\USERNAME\AppData\Local\VirtualStore\ProgramData\Intuit\Quicken\Config
+
+  Find the line with AddApps, add ";QFL" to it, like this, if not
+  already present:
+AddApps=;QHI;QFL
+
+  Then at the end of the file, add a QFL section:
+[QFL]
+ExeName=C:\temp\QImportP.cmd
+MenuString=Quicken Family LawyerX
+IntuitID=1023
+; use IntuitID=1007 for QHI, and IntuitID=1023 for QFL
+
+  The ExeName should be the full pathname to your working QImportP.cmd script.
+---- more detail ----
+[QFL]
+ExeName=C:\bin\QImportP.cmd
+MenuString=Quicken Family Lawyer
+IntuitID=1023
+IsGlobal=FALSE 
+WinTitle=Family Lawyer 
+ModuleName=QFL
+InformExec=TRUE
+; names QHI or QFL can be anything, only the IntuitID matters
+; it is 1007 for QHI, and 1023 for QFL
+; and the ExeName is what will be invoked when command is run
+; need ExeName, MenuString (anything in it) and IntuitID=1023 in QFL section
+; Don't need: IsGlobal=TRUE ;WinTitle=XFamily Lawyer ;ModuleName=QFL
+; must have .exe or .cmd file name ending, can't use .bat suffix
+; InformExec=FALSE or TRUE, .bat file still has same error 
+; "Failed to start program C:...\QimportP.bat. This program may not be correctly installed."
+; InformExec=FALSE or TRUE for .cmd, works with no Quicken error.
+; When InformExec line is not present or is FALSE, Quicken flashes the
+; "Command Prompt" DOS window where the script commands execute, so better
+; to keep it TRUE.
+--------
+
+Third: update Quicken, add a toolbar icon for QImportP.
+  Start Quicken, run the Edit -> Customize Toolbar command.
+  Check the "Show all choices" box in the "Add to toolbar" section.
+  Select "Quicken Family Lawyer" from the choices, and click on the "Add->"
+  button. Now this item will show up in the Current Toolbar Order section.
+  Select the "Quicken Family Lawyer" in this section, and click
+  on the "Edit Icons" button.
+  This will allow replacing the icon text, make it "QImportP". 
+  Click on "OK" button to dismiss the window, when all done.
+
+Note that the menu command "Property & Debt" will still show this
+new command with the old name "Quicken Family Lawyer". But the toolbar
+text may show the name typed in the previous step.
+  
+===========================================================================
+Copyright (c) 2009-2010, ACPlace.Net
+No Rights Reserved.
+Placed into Public Domain.
+May have calls into external web APIs, which will have 
+their own terms of use.
+===========================================================================

@@ -1,0 +1,551 @@
+<?XML version="1.0"?>
+<package>
+<job id="QImportP">
+<?job error="true" debug="true"?>
+<resource id="version">
+    0.5, 2009-11-23
+</resource>
+<resource id="homepage">
+    http://www.acplace.net/tools/import-prices-script-for-quicken
+</resource>
+<resource id="copyright">
+    Copyright (c) 2009, ACPlace.Net
+    No Rights Reserved.
+    Placed into Public Domain.
+    May have calls into external web APIs, which will have 
+    their own terms of use.
+</resource>
+
+<runtime>
+    <description>This Windows JScript program:
+    1) gets (downloads) current and historical quotes from Yahoo,
+    and if /automate is specified as an argument:
+      2) starts Quicken (if not already started),
+      3) sends keys to import the prices using Quicken's Import Prices command.
+      If Quicken file is protected with Password, the automation will not work
+      unless Quicken is started and the password entered before running
+      this script.
+
+    Downloaded prices are stored in file QImportP.csv, in the directory
+    %TMP% or %TEMP%, or C:\WINDOWS\TEMP, whichever setting is found first.
+
+    </description>
+    <named name = "noget"
+        helpstring = "Do not get quotes (from Yahoo)" 
+        type = "simple" required = "false"/>
+    <named name = "automate"
+        helpstring = "Import prices into Quicken. If necessary tries starting Quicken."
+        type = "simple" required = "false"/>
+    <named name = "days"
+        helpstring = "Get historical quotes for these many number of days (default 7)"
+        type = "string" required = "false"/>
+    <named name = "s"
+        helpstring = "List of comma-separated symbols for pricing"
+        type = "string" required = "false"/>
+    <named name = "daily"
+        helpstring = "Download daily prices (default)"
+        type = "simple" required = "false"/>
+    <named name = "weekly"
+        helpstring = "Download weekly prices"
+        type = "simple" required = "false"/>
+    <named name = "monthly"
+        helpstring = "Download monthly prices"
+        type = "simple" required = "false"/>
+    <named name = "v"
+        helpstring = "Verbose level - 0 (default), 1, 2, or 3"
+        type = "string" required = "false"/>
+    <named name = "dmy"
+        helpstring = "Use dd/mm/yy for date, for use outside USA"
+        type = "simple" required = "false"/>
+    <named name = "div100"
+        helpstring = "Divide amounts by 100, for converting pence into pounds"
+        type = "simple" required = "false"/>
+    <named name = "help"
+        helpstring = "/? or /h or /help - Print usage description"
+        type = "simple" required = "false"/>
+    <example>   Example: cscript QImportP.wsf /s:"C,FMAGX" /automate</example>
+</runtime>
+<object id="WSH" progid="WScript.Shell"/>
+<object id="FSO" progid="Scripting.FileSystemObject"/>
+<script language="JScript">
+<![CDATA[
+/*
+ * wsh jscript code to pull down historical quotes
+ * input: a list of symbols (stock, mutual funds, etc)
+ *        number of days to get quotes (in the past, starting from today)
+ * output: a file named QImportP.csv with prices that can be imported
+ *         into Quicken 2006 and possibly other versions.
+ *         File contains historical closing prices, and latest quotes also.
+ *         Each line has:    symbol,price,mm/dd/yyyy
+ * Quicken Import Prices only loads price - cannot load low/high/volume
+ *
+ * Yahoo details: historical data for mutual funds gets today's price
+ * only if called after around 8PM (?) or so.
+ */
+
+//-------------------------------------------------------
+// CONSTANTS
+var MS_IN_DAY = 24*60*60*1000; // milliseconds in a day
+var TODAY = new Date();
+var JVER = Number(ScriptEngineMajorVersion() + "." + ScriptEngineMinorVersion()); // is 5.7 on Windows XP
+var REGISTRY_KEY = "HKCU\\Software\\ACPlace.Net\\QImportP"; // root key
+var HTTP_STATUS_OK = 200;
+//-------------------------------------------------------
+// INPUT parameters
+// command line values override registry values which override these defaults
+// symbols: list of symbols, comma-separated
+var MESSAGE_LEVEL = 0; // 0,1,2,3... verbosity, debug levels
+var ERROR_LEVEL = 0, WARNING_LEVEL = 1, INFO_LEVEL = 2,  DEBUG_LEVEL = 3;
+var FREQ_DAILY = 'daily', FREQ_WEEKLY = 'weekly', FREQ_MONTHLY = 'monthly';
+var SYMBOLS_DEFAULT = 'C,FMAGX';
+// numdays: how many days in past - should be 1 or greater for historical data
+var NUMDAYS_DEFAULT = 7;
+var QEXE_DEFAULT = Array(
+        "%ProgramFiles%\\Quicken\\qw.exe", // Windows XP, Vista 64/32, all.
+        "%ProgramFiles(x86)%\\Quicken\\qw.exe", // Vista-32
+        "%ProgramW6432%\\Quicken\\qw.exe" // Vista-64
+        // "c:\\Program Files\\Quicken\\qw.exe", // Windows XP or Vista 32
+        // "c:\\Program Files (x86)\\Quicken\\qw.exe", // Vista-64
+        );
+var QTITLE = 'Quicken'; // Quicken App Window Title - prefix
+var OUT_FILENAME = 'QImportP.csv';
+var DDMMYY = false; // use dd/mm/yy for dates
+var DIV100 = false; // amounts are divided by 100, useful for handling some UK funds
+//var OUT_FILENAME = "Quicken-Prices-" + trunc2(TODAY.getMonth() + 1) + trunc2(TODAY.getDate()) + trunc2(TODAY.getFullYear()) + ".csv";
+
+//-------------------------------------------------------
+// OBJECTS - UrlHistForDate and UrlCurrForSymbols
+//
+// UrlHistForDate - for getting historical prices, from specified start date
+// to today (or yesterday). url is composed of joining components of urlHist.
+function UrlHistForDate(d, freq) {
+    this.base = "http://ichart.finance.yahoo.com/table.csv?";
+    this.symbol = "&s=";
+    this.mm1 = "&a=" + trunc2(d.getMonth()); // 0 to 11 needed here
+    this.dd1 = "&b=" + trunc2(d.getDate());
+    this.yyyy1 = "&c=" + d.getFullYear();
+    this.daily = "&g=d";
+    this.weekly = "&g=w";
+    this.monthly = "&g=m";
+    this.freq = this.daily; // default
+    if (freq == FREQ_MONTHLY)
+        this.freq = this.monthly;
+    else if (freq == FREQ_WEEKLY)
+        this.freq = this.weekly;
+
+    this.toUrl = function (symb) { // use this to get url for a specific symbol
+        return this.base + this.symbol + symb + this.mm1 + this.dd1 + this.yyyy1 + this.freq;
+    };
+    this.toQuicken = function (line, symb) { // from given yahoo data line, create quicken suitable import line
+        // given an historical data line from Yahoo, convert it to a 
+        // Quicken import file line - which is just symbol,price,date
+// Date      ,Open ,High ,Low  ,Close,Volume,Adj Close (after splits/dividends)
+// 1977-01-04,39.13,39.25,39.00,39.25,340800,0.91
+        var items = line.split(",", 7);
+        var ret = "";
+        // items[4] may be in pence and imports are in pounds, UK issue
+        if (DIV100) {
+            items[4] = Math.round(parseFloat(items[4])*100)/10000;
+        }
+        var ymd = items[0].split("-", 3);
+        if (ymd.length == 3) {
+            var dt = ymd[1] + "/" + ymd[2] + "/" + ymd[0];
+            if (DDMMYY) {
+                dt = ymd[2] + "/" + ymd[1] + "/" + ymd[0];
+            }
+            ret += symb + ", " + items[4] + ", " + dt;
+        }
+        return ret;
+    };
+    this.toString = function () { // not very useful, just here for debugging
+        return this.base + this.symbol + this.mm1 + this.dd1 + this.yyyy1 + this.freq;
+    };
+}
+//---------------------------------------------------------------------
+
+// urlCurrent - for getting current (last business day) prices
+// gets data like this - note that some dates may be today, some in past!
+// "C",1.02,"3/5/2009",1.11,0.97,563658432
+// "VIGRX",17.63,"3/4/2009",N/A,N/A,N/A
+// this function may not needed - may be simpler to just use historical
+// data which contains all known closing prices.
+function UrlCurrForSymbols(ss) {
+     this.url = "http://download.finance.yahoo.com/d/quotes.csv?f=sl1d1hgv&e=.csv&s=" + ss;
+    this.toUrl = function () {
+        return this.url;
+    };
+    this.toQuicken = function (line) { // from given yahoo data line, create quicken suitable import line
+
+        // given an current prices data line from Yahoo, convert it to a 
+        // Quicken import file line - which is just symbol,date,price
+        var items = line.split(",",6);
+        var ret = "";
+        if (items[0] && items[1] && items[2]) {
+            // items[1] may be in pence and imports are in pounds, UK issue
+            if (DIV100) {
+                items[1] = Math.round(parseFloat(items[1])*100)/10000;
+            }
+            // the date format returned is "M/dd/yyyy" with quotes
+            // so here’s an extra process which allows easy switch
+            // between month and day, needed for non-US processing
+            var ymd = items[2].replace(/\"/g,"");
+            ymd = ymd.split("/", 3);
+            if (ymd.length == 3) {
+                if (DDMMYY) {
+                    ret = "" + items[0] + ", " + items[1] + ", " + ymd[1] + "/" + ymd[0] + "/" + ymd[2];
+                } else {
+                    ret = "" + items[0] + ", " + items[1] + ", " + items[2];
+                }
+            }
+        }
+        return ret;
+    };
+    this.toString = function () { // just here for debugging
+        return this.url;
+    };
+}
+
+//---------------------------------------------------------------------
+
+// get all input parameters
+// NUMDAYS, SYMBOLS...
+message("TODAY = " + TODAY.toDateString(), INFO_LEVEL);
+var argsNamed = WScript.Arguments.Named;
+
+if (getArgVal('?', argsNamed, false)
+        || getArgVal('h', argsNamed, false)
+        || getArgVal('help', argsNamed, false)) {
+    WScript.Arguments.ShowUsage();
+    WScript.Quit();
+}
+
+MESSAGE_LEVEL = getArgVal('v', argsNamed, 0); // 0,1,2,3... verbosity levels
+
+// for UK processing, /div100 and /dmy may be present
+DIV100 = getArgVal('div100', argsNamed, false);
+DDMMYY = getArgVal('dmy', argsNamed, false);
+
+// setup output file
+var outFilePath = getTempDir() + "\\" + OUT_FILENAME;
+message("Output file name = " + outFilePath, INFO_LEVEL);
+
+var noGet = getArgVal('noget', argsNamed, false);
+if (!noGet) {
+    var symbols = getArgVal('s', argsNamed, SYMBOLS_DEFAULT);
+    var numDays = getArgVal('days', argsNamed, NUMDAYS_DEFAULT);
+    var freq = FREQ_DAILY; // default
+    if (getArgVal(FREQ_WEEKLY, argsNamed, false)) freq = FREQ_WEEKLY;
+    if (getArgVal(FREQ_MONTHLY, argsNamed, false)) freq = FREQ_MONTHLY;
+    getPrices(symbols, numDays, freq, outFilePath);
+}
+
+var automate = getArgVal('automate', argsNamed, false);
+if (automate) {
+    if (doAutomation(outFilePath)) {
+        // FSO.DeleteFile(outFilePath); // no need to delete?
+    }
+}
+
+message("QImportP: Done with script.", DEBUG_LEVEL);
+WScript.Quit(); //------------------------------- QUIT
+
+//---------------------------------------------------------------------
+// get both historical and current prices for given list of symbols
+function getPrices(symbols, numDays, freq, outFilePath) {
+
+    var error = false;
+
+    // setup HTTP connections, with appropriate timeouts
+    var WinHttpReq = new ActiveXObject("WinHttp.WinHttpRequest.5.1");
+    WinHttpReq.SetTimeouts(30000, 30000, 30000, 30000);
+
+    // setup url
+    var urlhist = new UrlHistForDate( getDateDaysPast(numDays), freq );
+    var symbols_array = []; // default, no historical data to get
+    if (numDays > 0)
+        symbols_array = symbols.split(",");
+
+    // setup output file
+    var outFile = FSO.CreateTextFile(outFilePath);
+    outFile.Writeline("!Type:Prices");
+
+    // get historical data, and write it to the output file
+    for (i in symbols_array) {
+        var sym = symbols_array[i];
+        var url = urlhist.toUrl(sym);
+        message("Sym=" + sym + ", URL=" + url, INFO_LEVEL);
+        WinHttpReq.Open("GET", url, false);
+        WinHttpReq.Send();
+        if (WinHttpReq.Status == HTTP_STATUS_OK) { // 200
+            message(WinHttpReq.ResponseText, DEBUG_LEVEL);
+
+            var lines = WinHttpReq.ResponseText.split("\n");
+            for(var i in lines) {
+                var out = urlhist.toQuicken(lines[i], sym);
+                message("lines i------ " + i + " " + lines[i] + " out=" + out, DEBUG_LEVEL);
+                if (out) {
+                    outFile.WriteLine(out);
+                }
+            }
+        } else {
+            // error, could not retrieve page
+            // some errors may be fine - if start date is recent and no
+            // closing prices exist for that symbol from that date
+            message("Error: could not retreive historical prices for symbol="+sym, ERROR_LEVEL);
+            message("  Code " + WinHttpReq.Status + " retrieving " + url, ERROR_LEVEL);
+        }
+    }
+
+    // get current prices for all symbols, and write to output file
+    var urlcurr = new UrlCurrForSymbols( symbols );
+    message("URL=" + urlcurr, INFO_LEVEL);
+    WinHttpReq.Open("GET", urlcurr.toUrl(), false);
+    WinHttpReq.Send();
+    if (WinHttpReq.Status == HTTP_STATUS_OK) { // 200
+        message(WinHttpReq.ResponseText, DEBUG_LEVEL);
+        var lines = WinHttpReq.ResponseText.split("\r\n");
+        for(var i in lines) {
+            var out = urlcurr.toQuicken(lines[i]);
+            if (out) {
+                outFile.WriteLine(out);
+            }
+        }
+    } else {
+        error = true;
+        message("Error: could not retreive latest prices for symbols="+symbols, ERROR_LEVEL);
+        message("  Code " + WinHttpReq.Status + " retrieving " + urlcurr.toUrl(), ERROR_LEVEL);
+    }
+
+    // done with file and http
+    outFile.Writeline("^"); 
+    outFile.Close();
+    // WinHttpReq.Close(); // wrong call..?
+    return !error;
+} // getPrices()
+
+//---------------------------------------------------------------------
+// Windows automation - start Quicken application, and when it is
+// open (after user enters any password, etc), run the Import command
+// Quicken does not have Automation capabilities, so have to use
+// SendKeys. This is not a very reliable method, depends a lot on timing
+// and position of windows on screen, etc. Still, should work most of the
+// time.
+// TODO - not very reliable using scripting language
+// this is better coded in something like C#, which has access
+// to functions like FindWindow and can better ensure sendkeys is going
+// to the right window.
+
+function doAutomation(outFilePath) {
+    // check if Quicken is already up
+    var foundApp = appActivate(QTITLE, 2); // check each second, for these many times
+    if (!foundApp) {
+       // try starting Quicken. this may not be very reliable, and since
+       // Quicken may be password protected, there is not much value
+       // in starting Quicken here. Better to run Quicken first, and then
+       // run this automation to just import the prices.
+        var qexe = '';
+        for (var i in QEXE_DEFAULT) {
+            qexe = WSH.ExpandEnvironmentStrings(QEXE_DEFAULT[i]);
+            // (FSO.FileExists(qexe)) - this check not necessary, just call Run
+            // Run will start application, or do nothing if app is already running
+            try {
+                WSH.Run('"' + qexe + '"', 1, false); // true to wait here, false to continue in this script
+            } catch (e) {
+                // ignore errors from Run, keep trying
+                message("automation: could not run Quicken at [" + qexe + "] " + e.description, DEBUG_LEVEL);
+                qexe = '';
+            }
+            if (qexe) {
+                // Run had no error, we can exit loop
+                break;
+            }
+        }
+        if (!qexe) {
+            message("Error: 1: Unable to run Quicken application - may be better to run Quicken first, and then this script", ERROR_LEVEL);
+            return false;
+        }
+        message("automation: started Quicken using: " + qexe, INFO_LEVEL);
+        // check if window is up - check a few times, allowing time for app to be up.
+        foundApp = appActivate(QTITLE, 20); // check each second, for these many times
+    }
+
+    // if password window is displayed, this automation is unlikely to
+    // work since timing it is hard/not possible all the time
+    // in that case, users should first start Quicken, enter password,
+    // and then run this script. It is not possible to pick appropriate
+    // number of seconds for this case - don't want to wait 20 secs
+    // all the time!
+    // WScript.Sleep(20000); // allow for possible password entry? 20 secs!
+    if (foundApp) {
+        // open portfolio - one of two ways - ^u (not ^U) or %i p
+        // alt-i is bad - brings up find menu in register view, so use ^u
+        // appSendKeys("%i", QTITLE); // open Investing Menu
+        // appSendKeys("p", QTITLE); // select Portfolio command
+        appSendKeys("^u", QTITLE); // go to Portfolio window
+
+        appSendKeys("%f", QTITLE); // open file menu
+        appSendKeys("i", QTITLE);  // select Import command
+        appSendKeys("i", QTITLE);  // select Import Prices command
+        // this brings up the "Import Price Data" dialog box
+        escapedPath = escapeSendKeys(outFilePath);
+        appSendKeys(escapedPath, QTITLE); // enter file name
+        appSendKeys("{ENTER}", QTITLE);   // send file name
+        // final OK - this should be sent only after file has been loaded,
+        // otherwise it will cause the Cancel button to be clicked!
+        // let user click OK, so they can see number of prices imported
+        // therefore line below may be commented.
+        //appSendKeys("{ENTER}", QTITLE);   // click OK on successful import box
+    } else {
+        message("Error: 2: Unable to activate Quicken application - not sending keys", ERROR_LEVEL);
+        return false;
+    }
+    return true;
+} // doAutomation()
+
+//---------------------------------------------------------------------
+// Utility Functions 
+
+//---------------------------------------------------------------------
+function appActivate(title, numtimes) {
+    var foundApp = false;
+    --numtimes;
+    for (var i = 0; i <= numtimes && !foundApp; ++i) { // check each second, for these many times
+        foundApp = WSH.AppActivate(title);
+        if (foundApp || (i >= numtimes)) break;
+        WScript.Sleep(1000);
+    }
+    return foundApp;
+}
+
+//--------------------------------------------------------------------- 
+function appSendKeys(keys, title) {
+    message("SendKeys " + keys, DEBUG_LEVEL);
+    if (appActivate(title, 2)) {
+        WSH.SendKeys(keys);
+        WScript.Sleep(1000);
+    } else {
+        message("Error: could not send keys" + keys, ERROR_LEVEL);
+    }
+}
+
+//--------------------------------------------------------------------- 
+function escapeSendKeys(str) {
+    var out = str;
+    out = out.replace(/{/g, "{{}");
+    out = out.replace(/~/g, "{~}");
+    out = out.replace(/!/g, "{!}");
+    out = out.replace(/\^/g, "{^}");
+    out = out.replace(/\+/g, "{+}");
+    out = out.replace(/ /g, "{SPACE}");
+    out = out.replace(/\t/g, "{TAB}");
+    if (out != str) {
+        message("Escape SendKeys new string" + out, DEBUG_LEVEL);
+    }
+    return out;
+}
+
+//---------------------------------------------------------------------
+// check if given argument is present in the args list,
+// return true if yes, otherwise return the default value
+// if arg has a = following name, then return the value instead
+// value provided after = character
+function getArgVal(what, args, defVal) {
+    var val = defVal; // if not found
+    var re = new RegExp("^\/" + what, "i");
+    var exists = args.exists(what);
+    if (exists) {
+        val = true;
+        var item = args.item(what);
+        if (item) {
+            val = item;
+        }
+    }
+    message("getArgVal:  what=" + what + "  val=" + val, DEBUG_LEVEL);
+    return val;
+}
+
+//---------------------------------------------------------------------
+// XXX TODO - add registry support so don't have to provide command line args all the time
+function getRegVal(what) {
+    var key = REGISTRY_KEY + "\\" + what;
+    var val = WSH.RegRead(key);
+    message("Registry " +  key + "=" + val, DEBUG_LEVEL);
+}
+
+function setRegVal(what, val) {
+    var key = REGISTRY_KEY + "\\" + what;
+    WSH.RegWrite(key, val, "REG_SZ");
+    message("Wrote Registry " +  key + "=" + val, DEBUG_LEVEL);
+}
+
+function deleteRegVal() { // delete all registry values
+    var key = REGISTRY_KEY;
+    WSH.RegDelete(key);
+}
+
+function getQEXERegVal(defVal) { // NOTUSED? XP, Vista, Win7, all have different keys.
+// No need to use this, just use multiple values for QEXE_DEFAULT
+    var key = "HKLM\\SOFTWARE\\Intuit\\Quicken\\ExePath";
+    var val = defVal;
+    try {
+        val = WSH.RegRead(key);
+    } catch(e) {
+        message("Error: failed to find Quicken Registry Value " +  key + ", " + e.description, ERROR_LEVEL);
+        message("       Will try default value " +  val, ERROR_LEVEL);
+    }
+    message("Using getQEXE value of " + val, DEBUG_LEVEL);
+    return val;
+}
+
+//---------------------------------------------------------------------
+function getTempDir() {
+    var t = WSH.ExpandEnvironmentStrings("%TMP%");
+    if (!t) t = WSH.ExpandEnvironmentStrings("%TEMP%");
+    if (!t) t = 'C:\\WINDOWS\\TEMP';
+    return t;
+}
+
+//---------------------------------------------------------------------
+function getDateDaysPast(count) {
+    var d = new Date(TODAY.valueOf() - count * MS_IN_DAY);
+    return d;
+}
+
+//---------------------------------------------------------------------
+// truncate given number to 2 chars, or prefix with 0 to make it 2 chars
+function trunc2(n) {
+    var nn = "0" + n;
+    return nn.substr(nn.length - 2);
+}
+
+//---------------------------------------------------------------------
+// print given message if its level is <= MESSAGE_LEVEL setting
+// level 0 will always print, 1 will print if DEBUG is 0 or 1, etc
+function message(str, level) {
+    if (level == 0 || level <= MESSAGE_LEVEL)
+        WScript.Echo(str);
+}
+//---------------------------------------------------------------------
+]]>
+</script>
+</job>
+//---------------------------------------------------------------------
+<job id="Setup">
+<?job error="true"  debug="true"?>
+<runtime>
+    <description>This is used to Install and Setup the QImportP script.
+    TODO
+    </description>
+    <example>   Example: cscript QImportP.wsf /job:Setup"</example>
+</runtime>
+<script language="VBScript">
+<![CDATA[
+'
+' SETUP for wsh QImportP jscript/vbscript code
+' TODO
+'
+]]>
+</script>
+</job>
+//---------------------------------------------------------------------
+</package>
