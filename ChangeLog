@@ -1,3 +1,19 @@
+2017-06-02
+
+* Version 0.7
+
+* Yahoo has disabled historical rates download, so removed support for /days:1
+or higher number of days. /days:0 is default and will download current prices
+only.
+Google finance API has also been deprecated since 2011.
+So there are no reliable sources of historical data anymore.
+
+* Here's a web discussion on Yahoo discontinuing ichart support:
+https://yahoo.uservoice.com/forums/382977-finance/suggestions/19310356-https-ichart-finance-yahoo-com-table-csv-s-spy-akk
+Example:
+http://ichart.finance.yahoo.com/table.csv?&s=VTSAX&a=04&b=30&c=2017&g=d
+returns 404 error code now.
+
 2015-04-09
 
 * Version 0.6
@@ -21,7 +37,7 @@ So replacement is /div:100 and can specify any divisor.
 Renamed QImportP.bat.txt to QImportP.cmd.txt
 
 * Support for Vista64 based on comment at:
-http://www.aczoom.com/archive-2016/tools/import-prices-script-for-quicken#comment-64
+http://www.aczoom.com/archive-2016/consumer/import-prices-script-for-quicken/index.html#comment-5551
 Still, it is best to have Quicken started before running script for things
 like password-protected Quicken files.
 
@@ -47,7 +63,7 @@ Find dialog if a register is open.
 
 * Option added for GBP (UK, and probably other places too). Use
 /gbp option.  Updates from:
-http://www.aczoom.com/archive-2016/tools/import-prices-script-for-quicken#comment-6
+http://www.aczoom.com/archive-2016/consumer/import-prices-script-for-quicken/index.html#comment-5535
 
 
 2009-03-22
