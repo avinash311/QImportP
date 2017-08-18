@@ -1,3 +1,21 @@
+2017-08-08
+
+* New Major Version 1.0 (Because of significant logic changes in the method of getting prices)
+
+* Remove need for API and use "screen scraping" methods to get prices directly from html
+  This is to re-enable historical rates download allowing multiple days
+  
+* Use Google Finance as the source for prices (both daily and historic)
+  It's easier to control history from google finance as the history url allows number of days as a parameter;
+
+* Minor enhancements
+  /dmy:format Option to allow any output date format to be specified (eg. D-M-Y, Y/M/D etc:-)
+  /symonly Symbols in google format is MARKET:SYMBOL but this option removes market from output (eg. LON:LLOY outputs LLOY)
+           Note. In google you dont have to specify exchange but if you don't, you may get the wrong one!
+   each symbol can have a "!" prefix to ignore the /div:xxx settings for this stock 
+    (eg. /div:100 s:LON:LLOY,!LONINDEX:ASX), only the LONINDEX:ASX will ignore div:100
+  /noget option is removed
+  
 2017-06-02
 
 * Version 0.7
