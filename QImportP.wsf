@@ -1,15 +1,16 @@
-<?XML version="1.0"?>
+﻿<?XML version="1.0"?>
 <package>
 <job id="QImportP">
 <?job error="true" debug="true"?>
 <resource id="version">
-    0.7, 2017-06-02
+    1.0, 2017-08-18
 </resource>
 <resource id="homepage">
     http://www.aczoom.com/tech/import-prices-script-for-quicken/
 </resource>
 <resource id="copyright">
     Copyright (c) 2009,2015,2017 ACZoom.com
+	Amendments to use Screen Scrape Copyright 2017 (c) 2017 Adrian Talbot
     No Rights Reserved.
     Placed into Public Domain.
     May have calls into external web APIs, which will have 
@@ -18,8 +19,9 @@
 
 <runtime>
     <description>This Windows JScript program:
-    1) gets (downloads) current quotes from Yahoo, and if /automate is
-    specified as an argument:
+      1) gets current and historical quotes from Google Finance web screens
+         and creates a .csv file of prices for import into quicken
+    and if /automate is specified as an argument:
       2) starts Quicken (if not already started),
       3) sends keys to import the prices using Quicken's Import Prices command.
       If Quicken file is protected with Password, the automation will not work
@@ -27,58 +29,57 @@
       this script.
 
     Downloaded prices are stored in file QImportP.csv, in the directory
-    %TMP% or %TEMP%, or C:\WINDOWS\TEMP, whichever setting is found first.
-
-    Note that script no longer downloads historical prices, since Yahoo
-    has terminated support for that.
+     to be replaced with %TMP% or %TEMP%, or C:\WINDOWS\TEMP, whichever setting is found first.
 
     </description>
-    <named name = "noget"
-        helpstring = "Do not get quotes (from Yahoo)" 
-        type = "simple" required = "false"/>
     <named name = "automate"
-        helpstring = "Import prices into Quicken. If necessary tries starting Quicken."
+        helpstring = "Start Quicken and import prices into Quicken"
         type = "simple" required = "false"/>
-    <named name = "s"
-        helpstring = "List of comma-separated symbols for pricing"
+    <named name = "days"
+        helpstring = "Get historical quotes for these many number of days (default 0 = current prices only)"
         type = "string" required = "false"/>
+    <named name = "s"
+        helpstring = "List of comma-separated symbols for pricing (Format [!][exchange:]SYM)"
+        type = "string" required = "true"/>
     <named name = "v"
-        helpstring = "Verbose level - 0 (default), 1, 2, or 3"
+        helpstring = "verbosity of messages; 0=ERROR,1=WARNING+ERROR, 2=INFO+WARNNG+ERROR. 3=DEBUG+INFO+WARNING+ERROR"
         type = "string" required = "false"/>
     <named name = "dmy"
-        helpstring = "Use dd/mm/yy for date, for use outside USA (mm/dd/yy)"
+        helpstring = "Use specified format for date(Default=mm/dd/yy)"
         type = "simple" required = "false"/>
     <named name = "div"
         helpstring = "Divide amounts by value, use /div:100 for converting pence into pounds"
         type = "string" required = "false"/>
-    <named name = "help"
+	<named name = "symonly"
+        helpstring = "output only the symbol excluding exchange (eg. LON:FDI outputs FDI)"
+        type = "simple" required = "false"/>
+	<named name = "help"
         helpstring = "/? or /h or /help - Print usage description"
         type = "simple" required = "false"/>
     <example>   Example: cscript QImportP.wsf /s:"C,FMAGX" /automate</example>
 </runtime>
+
 <object id="WSH" progid="WScript.Shell"/>
 <object id="FSO" progid="Scripting.FileSystemObject"/>
 <script language="JScript">
 <![CDATA[
 /*
- * wsh jscript code to pull down historical quotes
+ * wsh jscript code to pull down current and historical quotes
  * input: a list of symbols (stock, mutual funds, etc)
- *        number of days to get quotes (in the past, starting from today)
+ *        number of days to get quotes (in the past, 0 = current day)
  * output: a file named QImportP.csv with prices that can be imported
- *         into Quicken 2006 and possibly other versions.
- *         File contains historical closing prices, and latest quotes also.
- *         Each line has:    symbol,price,mm/dd/yyyy
+ *         into Quicken 2004, 2005, 2006 and possibly other versions.
+ *         File contains historical closing prices, and latest quotes.
+ *         Each line has quicken format:    symbol,price,mm/dd/yyyy
  * Quicken Import Prices only loads price - cannot load low/high/volume
  *
- * Yahoo details: historical data for mutual funds gets today's price
- * only if called after around 8PM (?) or so.
  */
 
 //-------------------------------------------------------
 // CONSTANTS
-var MS_IN_DAY = 24*60*60*1000; // milliseconds in a day
 var TODAY = new Date();
-var JVER = Number(ScriptEngineMajorVersion() + "." + ScriptEngineMinorVersion()); // is 5.7 on Windows XP
+//var JVER = Number(ScriptEngineMajorVersion() + "." + ScriptEngineMinorVersion()); // is 5.7 on Windows XP
+//var REGISTRY_KEY = "HKCU\\Software\\ACPlace.Net\\QImportP"; // root key
 var HTTP_STATUS_OK = 200;
 //-------------------------------------------------------
 // INPUT parameters
@@ -87,12 +88,8 @@ var HTTP_STATUS_OK = 200;
 var MESSAGE_LEVEL = 0; // 0,1,2,3... verbosity, debug levels
 var ERROR_LEVEL = 0, WARNING_LEVEL = 1, INFO_LEVEL = 2,  DEBUG_LEVEL = 3;
 
-var FREQ_DAILY = 'daily', FREQ_WEEKLY = 'weekly', FREQ_MONTHLY = 'monthly';
-var SYMBOLS_DEFAULT = 'C,FMAGX';
-// numdays: how many days in past - should be 1 or greater for historical data,
-// and 0 for latest data only.
-// Version 0.7, 2017-June: Yahoo discontinued support for historical data,
-// so now this script only supports current rates.
+var SYMBOLS_DEFAULT = 'c,FMAGX';
+// numdays: how many days in past - should be 1 or greater for historical data
 var NUMDAYS_DEFAULT = 0;
 var QEXE_DEFAULT = Array(
         "%ProgramFiles%\\Quicken\\qw.exe", // Windows XP, Vista 64/32, all.
@@ -103,230 +100,458 @@ var QEXE_DEFAULT = Array(
         );
 var QTITLE = 'Quicken'; // Quicken App Window Title - prefix
 var OUT_FILENAME = 'QImportP.csv';
-var DDMMYY = false; // use dd/mm/yy for dates
+var DATE_FORMAT = "M/D/Y";
 var DIV_NUM = 0; // amounts are divided by this (if non-zero), useful for handling some UK funds
-//var OUT_FILENAME = "Quicken-Prices-" + trunc2(TODAY.getMonth() + 1) + trunc2(TODAY.getDate()) + trunc2(TODAY.getFullYear()) + ".csv";
+
 
 //-------------------------------------------------------
-// OBJECTS - UrlHistForDate and UrlCurrForSymbols
+// OBJECTS - UrlHist and UrlCurr
 //
-// UrlHistForDate - for getting historical prices, from specified start date
-// to today (or yesterday). url is composed of joining components of urlHist.
-function UrlHistForDate(d, freq) {
-    this.base = "http://ichart.finance.yahoo.com/table.csv?";
-    this.symbol = "&s=";
-    this.mm1 = "&a=" + trunc2(d.getMonth()); // 0 to 11 needed here
-    this.dd1 = "&b=" + trunc2(d.getDate());
-    this.yyyy1 = "&c=" + d.getFullYear();
-    this.daily = "&g=d";
-    this.weekly = "&g=w";
-    this.monthly = "&g=m";
-    this.freq = this.daily; // default
-    if (freq == FREQ_MONTHLY)
-        this.freq = this.monthly;
-    else if (freq == FREQ_WEEKLY)
-        this.freq = this.weekly;
+// UrlHist - for getting historical prices, for a specified number of days
+// Url is composed of joining components of urlHist.
+function UrlHist(numdays)
+    {
+    // Eg. for google = 
+    //    https://www.google.com/finance/historical?q=LON&num=7
+    
+    this.base = "https://www.google.com/finance/historical?q=";
+    this.num = "&num=";
+    
+    this.toUrl = function (symb)
+        {
+		// remove any leading ! which is the flag to ignore /div: option
+		if (symb.charAt(0)=="!")
+		    symb = symb.substr(1);
+		
+        // use this to get url for a specific symbol
+        return this.base + symb + this.num + numdays;
+        };
+		
+    this.toQuicken = function (histDate, histPrice, symb)
+        { 
+		// output is symb,date,price
+		
+		// symb leading with ! means ignore "/div" option
+		var dodiv = (DIV_NUM > 0);
+		if (symb.charAt(0) == "!")
+			{
+			dodiv = false;
+		    symb = symb.substr(1);
+			}
+			
+		if (dodiv)
+		    {
+			histPrice = Math.round(parseFloat(histPrice)/DIV_NUM * 10000)/10000;
+			}
+			
+		// if SYMONLY, want to output symbol excluding market
+		if (SYMONLY)
+			 symb = symb.substr(symb.indexOf(":")+1);
 
-    this.toUrl = function (symb) { // use this to get url for a specific symbol
-        return this.base + this.symbol + symb + this.mm1 + this.dd1 + this.yyyy1 + this.freq;
-    };
-    this.toQuicken = function (line, symb) { // from given yahoo data line, create quicken suitable import line
-        // given an historical data line from Yahoo, convert it to a 
-        // Quicken import file line - which is just symbol,price,date
-// Date      ,Open ,High ,Low  ,Close,Volume,Adj Close (after splits/dividends)
-// 1977-01-04,39.13,39.25,39.00,39.25,340800,0.91
-        var items = line.split(",", 7);
-        var ret = "";
-        // items[4] may be in pence and imports are in pounds, UK issue
-        // May be used for other coversions too - exchange rate, for example.
-        if (DIV_NUM > 0) {
-            // The * 10000)/10000 is to get upto 4 decimal places precision
-            items[4] = Math.round(parseFloat(items[4])/DIV_NUM * 10000)/10000;
-        }
-        var ymd = items[0].split("-", 3);
-        if (ymd.length == 3) {
-            var dt = ymd[1] + "/" + ymd[2] + "/" + ymd[0];
-            if (DDMMYY) {
-                dt = ymd[2] + "/" + ymd[1] + "/" + ymd[0];
-            }
-            ret += symb + ", " + items[4] + ", " + dt;
-        }
-        return ret;
-    };
-    this.toString = function () { // not very useful, just here for debugging
-        return this.base + this.symbol + this.mm1 + this.dd1 + this.yyyy1 + this.freq;
-    };
-}
+		
+		// DATE_FORMAT = parameter or default D/M/Y (eg. D/M/Y or M-D-Y) need to replace D with Day, M with Month, Y with year
+		var myDateOut = DATE_FORMAT;
+		var myDate = new Date(histDate);
+		myDateOut = myDateOut.replace("D",trunc2(myDate.getDate()));
+		myDateOut = myDateOut.replace("M",trunc2(myDate.getMonth()+1));
+		myDateOut = myDateOut.replace("Y",myDate.getFullYear());
+		return symb + ',' + myDateOut + ',' + histPrice;
+					
+		};
+		
+	this.getPriceDate = function (ResponseText,AllPrices,AllDates)
+		{
+		// setup domain parsor to process xml data
+		var myDom = new ActiveXObject("MSXML2.DOMDocument.3.0");
+		myDom.async=false;
+		myDom.resolveExternals=false;
+		
+		//var AllPrices = [];
+		//var AllDates = [];
+		 
+		 try  // regex may return error if no matches so catch any to avoid script abort
+			{
+			var webHtml = ResponseText.replace(/(?:\r\n|\r|\n|\\n|")/g, "");  // replace lf, cr, "\n" and "(quote) with nothing
+			
+			// First get the google provided symbol name from the "meta Description block" because user data may not have the market prefix
+	        //  and there is specific action if the symbol is for a mutual fund (MUTF (including MUTF_GB etc))
+			var descrBlock = webHtml.match(/<meta name=Description.+?>/)[0];  // meta Description line contains market:symbol
+			var webMktSymb = descrBlock.match(/\(.+\)/)[0];  // market:sybmol is surrounded by (....)
+			var webMktSymb = webMktSymb.replace(/\(|\)/g,"");  // remove the brackets
+			var webMarket = webMktSymb.substr(0,webMktSymb.indexOf(":"));  // part before the ":"
+			var webSymb = webMktSymb.substr(webMktSymb.indexOf(":")+1);     // part after the ":"
+				
+			// the prices table we are interested is has class="gf-table historical_price"
+			var priceDiv = webHtml.match(/<table class\=\gf-table historical_price.+\/table>/)[0];
+				
+			// we have a sort of table now ... but there are no </th> </td> and </tr> tags - shame on you google
+			// lets quickly correct that
+			// I'm only interested in <td> tags so lets extract them
+			var priceDiv = priceDiv.match(/<td.*</g)[0];
+			// now to add the </td> tags
+			var tableData = priceDiv.replace(/<td/g,"</td><td"); // add a </td> block in front of all <td>
+			var tableData = tableData.replace("</td>","");  // remove first </td> created above
+			// append the final /td> tags
+			var tableData = tableData + "/td>";
+			// remove any <tr> tags
+			var tableData = tableData.replace(/<tr>/g,"");
+			// finally remove all " class="...." 
+			var tableData = tableData.replace(/ (class=).+?>/g,">");   
+			// now tableData should be correctly formatted xml so I can use dom to extract the values
+				
+			// so we load these into the dom parsor
+			myDom.loadXML("<table>"+tableData+"</table>");
+			var myPrices = myDom.getElementsByTagName("td");
+			if (myPrices.length == 0)
+			    message("Error: No historic prices found - Table Format error?",ERROR_LEVEL);
+						
+			// For normal stock;		
+			// the data is in groups of 6
+			// date, open, high, low, close, volume
+			// so array values [0]-[5] = 1st 
+			//                 [6]-[11] = 2nd
+			// For MUTF (including MUTF_GB etc);
+			// the data is in groups of 2
+			// date,price
+			// so array values [0]-[1] = 1st 
+			//                 [2]-[3] = 2nd
+			if (webMarket.indexOf("MUTF") >= 0 )
+				{
+				for (i=0;i<myPrices.length - 1;i+=2)
+					{
+					// interested in myPrices[i].text = date
+					//           and ,myPrices[i+1].text = price
+				
+					// remove thousands seperator
+					currPrice = myPrices[i+1].text.replace(",","");
+					AllPrices.push(currPrice);
+					AllDates.push(myPrices[i].text);
+					}
+				}
+			  else
+				{
+				for (i=0;i<myPrices.length - 5;i+=6)
+					{				
+					// interested in myPrices[i].text = date
+					//           and ,myPrices[i+4].text = close price
+				
+					// remove thousands seperator
+					currPrice = myPrices[i+4].text.replace(",","");
+					AllPrices.push(currPrice);
+					AllDates.push(myPrices[i].text);
+					}
+			    }		
+			}
+		catch(err)
+			{
+			message("Warn: Cannot find match/replace in getPriceDate() "+err.message,WARNING_LEVEL);
+			return false;
+			}
+		return true;
+		}
+					
+	};
+
 //---------------------------------------------------------------------
+// urlCurrent - for getting current prices
+function UrlCurr()
+	{
+    this.base = "https://www.google.com/finance?q=";
+ 
+    this.toUrl = function (symb)
+    	{
+		// remove any leading ! which is the flag to ignore "/div"
+		if (symb.charAt(0)=="!")
+		    symb = symb.substr(1);
+			
+        return this.base + symb;
+        };
+	
+    this.toQuicken = function (urlPrice, symb, useDate)
+     	{ 
+		// output format = symb,curr_date,price
+			
+		// symb leading with ! means ignore "/div" option
+		var dodiv = (DIV_NUM > 0);
+		if (symb.charAt(0)=="!")
+			{
+			dodiv = false;
+		    symb = symb.substr(1);
+			}
+		
+        if (dodiv)
+		   urlPrice = Math.round(parseFloat(urlPrice)/DIV_NUM * 10000)/10000;
+		   
+		// if SYMONLY, want to output symbol excluding market
+		if (SYMONLY)
+			 symb = symb.substr(symb.indexOf(":")+1);
+   
+    // date_format = parameter or default D/M/Y (eg. D/M/Y or M-D-Y) need to replace D with Day, M with Month, Y with year
+    var myDateOut = DATE_FORMAT;
+	myDateOut = myDateOut.replace("D",trunc2(useDate.getDate()));
+	myDateOut = myDateOut.replace("M",trunc2(useDate.getMonth()+1));
+	myDateOut = myDateOut.replace("Y",useDate.getFullYear());
+	
+	return symb + ',' + myDateOut + ',' + urlPrice;
+        
+        };
+		
+    this.getPrice = function (ResponseText)
+	    {
+		try 
+			{
+			// make it easier to identify the html fields
+			var webHtml = ResponseText.replace(/(?:\r\n|\r|\n|\\n|"|,)/g, "");  // replace lf, cr, "\n" and "(quote) with nothing
+			
+			var priceBlock = webHtml.match(/<span class=pr.+?<\/span>/)[0]; 
+			
+			// get the price bits
+			var currPrice = priceBlock.match(/>\d+.+?</)[0];  // gets number between ">" and "<" 
+			
+			// remove the leading/trailing "<" and ">"
+			currPrice = currPrice.replace(/[<|>]/g,"");		
+			}
+		catch(err)
+			{
+			message("WARN: Cannot find current price in getPrice() "+err.message,WARNING_LEVEL)
+			return 0;
+			}
+			
+		if (!currPrice)
+			{
+			message("WARN: current price not found!",WARNING_LEVEL)
+			return 0;
+			}
+	
+        return currPrice;
+		}
+		
+	this.getDate = function (ResponseText)
+	    {
+		// if market is MUTF type or the market is "Closed" then need to return the date specified within html
+		//  otherwise use the current date.
+		
+		// make it easier to identify the html fields
+		var webHtml = ResponseText.replace(/(?:\r\n|\r|\n|\\n|"|,)/g, "");  // replace lf, cr, "\n" and "(quote) with nothing
+		
+        var useDate = new Date();  // Default current date is today
+		
+	    // First get the google provided symbol name from the "meta Description block" because user data may not have the market prefix
+	    //  and there is specific action if the symbol is for a mutual fund (MUTF (including MUTF_GB etc))
+			var descrBlock = webHtml.match(/<meta name=Description.+?>/)[0];  // meta Description line contains market:symbol
+			var webMktSymb = descrBlock.match(/\(.+\)/)[0];  // market:sybmol is surrounded by (....)
+			var webMktSymb = webMktSymb.replace(/\(|\)/g,"");  // remove the brackets
+			var webMarket = webMktSymb.substr(0,webMktSymb.indexOf(":"));  // part before the ":"
+			var webSymb = webMktSymb.substr(webMktSymb.indexOf(":")+1);     // part after the ":"
 
-// urlCurrent - for getting current (last business day) prices
-// gets data like this - note that some dates may be today, some in past!
-// "C",1.02,"3/5/2009",1.11,0.97,563658432
-// "VIGRX",17.63,"3/4/2009",N/A,N/A,N/A
-function UrlCurrForSymbols(ss) {
-     this.url = "http://download.finance.yahoo.com/d/quotes.csv?f=sl1d1hgv&e=.csv&s=" + ss;
-    this.toUrl = function () {
-        return this.url;
-    };
-    this.toQuicken = function (line) { // from given yahoo data line, create quicken suitable import line
+		// lets see if there is a date on the screen which we need to use
+		// MUTF type doesn't update until market close so last update date is on the screen
+		// for normal stock, if the market has closed the date to use is on the screen
+		var screenDate = "";
+		if ( webMarket.indexOf("MUTF") >= 0 )
+			{
+			var dateMUTF = webHtml.match(/<span class=datetime sfe.+?<\/span>/)[0];
+			screenDate = dateMUTF.match(/>.+? \d+/)[0];
+			screenDate = screenDate.replace(">","");   // remove ">" leaving date without year
+			}
+		 else
+			{
+			var marketClosed = webHtml.match(/<span class=nwp.+?<\/span>/)[0];
+			if ( marketClosed.indexOf("Close") >= 0 )
+			   {
+			   // we have <span class=nwp>Aug 11 - Close</span>
+               screenDate = marketClosed.match(/>.+? \d+/)[0];
+			   screenDate = screenDate.replace(">","");   // remove ">" leaving date without year
+			   }
+			}
+			
+		// if we found a date on the screen, it does not contain the year (eg. "Aug 13")	
+	    if ( screenDate != "" )
+			{
+			// Assume current year unless it is January and the screen date is Dec
+			if (useDate.getMonth() == 0 && ScreenDate.substr(0,3) == "Dec")  // getMonth() starts at 0
+				var screenYear = useDate.getFullYear()-1; // currently Jan and Screen is Dec so use prev year
+			 else
+				var screenYear = useDate.getFullYear();   // use current year
 
-        // given an current prices data line from Yahoo, convert it to a 
-        // Quicken import file line - which is just symbol,date,price
-        var items = line.split(",",6);
-        var ret = "";
-        if (items[0] && items[1] && items[2]) {
-            // items[1] may be in pence and imports are in pounds, UK issue
-            // May be used for other coversions too - exchange rate, for example.
-            if (DIV_NUM > 0) {
-                // The * 10000)/10000 is to get upto 4 decimal places precision
-                items[1] = Math.round(parseFloat(items[1])/DIV_NUM * 10000)/10000;
-            }
-            // the date format returned is "M/dd/yyyy" with quotes
-            // so here's an extra process which allows easy switch
-            // between month and day, needed for non-US processing
-            var ymd = items[2].replace(/\"/g,"");
-            ymd = ymd.split("/", 3);
-            if (ymd.length == 3) {
-                if (DDMMYY) {
-                    ret = "" + items[0] + ", " + items[1] + ", " + ymd[1] + "/" + ymd[0] + "/" + ymd[2];
-                } else {
-                    ret = "" + items[0] + ", " + items[1] + ", " + items[2];
-                }
-            }
-        }
-        return ret;
-    };
-    this.toString = function () { // just here for debugging
-        return this.url;
-    };
-}
+			useDate = new Date(screenDate+", "+screenYear);   
+			}
+						
+		return useDate;	
+		}
+
+	}
 
 //---------------------------------------------------------------------
-
 // get all input parameters
 // NUMDAYS, SYMBOLS...
-message("TODAY = " + TODAY.toDateString(), INFO_LEVEL);
+
 var argsNamed = WScript.Arguments.Named;
+MESSAGE_LEVEL = getArgVal('v', argsNamed, 0); // 0,1,2,3... verbosity levels
+
+message("TODAY = " + TODAY.toDateString(), INFO_LEVEL);
 
 if (getArgVal('?', argsNamed, false)
-        || getArgVal('div100', argsNamed, false) // old arg, no longer used
         || getArgVal('h', argsNamed, false)
-        || getArgVal('help', argsNamed, false)) {
+        || getArgVal('help', argsNamed, false))
+	{
     WScript.Arguments.ShowUsage();
     WScript.Quit();
-}
-
-MESSAGE_LEVEL = getArgVal('v', argsNamed, 0); // 0,1,2,3... verbosity levels
+	}
 
 // for UK processing, /div:100 and /dmy may be present
 DIV_NUM = getArgVal('div', argsNamed, 0);
-DDMMYY = getArgVal('dmy', argsNamed, false);
+DATE_FORMAT = getArgVal('dmy', argsNamed, DATE_FORMAT);
+
+// Option to exclude exchange in output (eg. LON:FDI -> FDI)
+var SYMONLY = getArgVal('symonly', argsNamed, false); 
 
 // setup output file
 var outFilePath = getTempDir() + "\\" + OUT_FILENAME;
 message("Output file name = " + outFilePath, INFO_LEVEL);
 
-var noGet = getArgVal('noget', argsNamed, false);
-if (!noGet) {
-    var symbols = getArgVal('s', argsNamed, SYMBOLS_DEFAULT);
-    var numDays = NUMDAYS_DEFAULT; // getArgVal('days', argsNamed, NUMDAYS_DEFAULT);
-    var freq = FREQ_DAILY; // default. 2017-May: Unused - no historical support.
-    // if (getArgVal(FREQ_WEEKLY, argsNamed, false)) freq = FREQ_WEEKLY;
-    // if (getArgVal(FREQ_MONTHLY, argsNamed, false)) freq = FREQ_MONTHLY;
-    getPrices(symbols, numDays, freq, outFilePath);
-}
-
+// get symbols and other parameters
+var symbols = getArgVal('s', argsNamed, SYMBOLS_DEFAULT);
+var numDays = getArgVal('days', argsNamed, NUMDAYS_DEFAULT);
 var automate = getArgVal('automate', argsNamed, false);
-if (automate) {
-    if (doAutomation(outFilePath)) {
-        // FSO.DeleteFile(outFilePath); // no need to delete?
-    }
-}
+
+try  // open outut file and catch error, for example file already in use
+  {
+	// setup output file and write first line for quicken identification
+    var outFile = FSO.CreateTextFile(outFilePath);
+    outFile.Writeline("!Type:Prices");
+   }
+  catch(err)
+   {
+    message("Error: File "+outFilePath+" - "+err.message,ERROR_LEVEL);
+   }
+
+if (outFile)
+    {   
+	if (getPrices(symbols, numDays, outFilePath))
+    	{
+		// done with file and http
+        outFile.Writeline("^"); 
+        outFile.Close();
+		if (automate)
+			{
+			message("doAutomation",DEBUG_LEVEL);
+			doAutomation(outFilePath)
+			}
+		}
+	}
 
 message("QImportP: Done with script.", DEBUG_LEVEL);
-WScript.Quit(); //------------------------------- QUIT
+WScript.Quit(); 
 
 //---------------------------------------------------------------------
 // get both historical and current prices for given list of symbols,
 // depending on input args.
-function getPrices(symbols, numDays, freq, outFilePath) {
-
+function getPrices(symbols, numDays, outFilePath)
+    {
+    message("Start getPrices",ERROR_LEVEL);
+	
     var error = false;
 
     // setup HTTP connections, with appropriate timeouts
     var WinHttpReq = new ActiveXObject("WinHttp.WinHttpRequest.5.1");
-    WinHttpReq.SetTimeouts(30000, 30000, 30000, 30000);
+    WinHttpReq.SetTimeouts(30000, 30000, 30000, 30000)
+	
+	// setup domain parsor to process xml data
+	//var myDom = new ActiveXObject("MSXML2.DOMDocument.3.0");
+	//myDom.async=false;
+	//myDom.resolveExternals=false;
+	
+	// setup current and hist url's
+	var urlcurr = new UrlCurr();
+    var urlhist = new UrlHist( numDays );
 
-    // setup url
-    var urlhist = new UrlHistForDate( getDateDaysPast(numDays), freq );
-    var symbols_array = []; // default, no historical data to get
-    if (numDays > 0)
-        symbols_array = symbols.split(",");
+		
+	// for each symbol, get current then historical price
+	var symbols_array = [];
+	symbols_array = symbols.split(",");
+	for (i in symbols_array) 
+	    { 
+		 var sym = symbols_array[i];
+		 message("Info: Current Price Treatment for symbol=" + sym, INFO_LEVEL);
 
-    // setup output file
-    var outFile = FSO.CreateTextFile(outFilePath);
-    outFile.Writeline("!Type:Prices");
+		// current price for sym
+		var url = urlcurr.toUrl(sym);
+		WinHttpReq.Open("GET", url, false);
+		WinHttpReq.Send();
+		if (WinHttpReq.Status == HTTP_STATUS_OK) 
+			{
+			 currPrice = urlcurr.getPrice(WinHttpReq.ResponseText);
+			 useDate = urlcurr.getDate(WinHttpReq.ResponseText);
+			 if (currPrice > 0 && typeof useDate != "undefined") // AJT ** And useDate is set correctly ?!
+			     {
+				 var out = urlcurr.toQuicken(currPrice, sym, useDate); 
+			     if (out)
+					{
+					outFile.WriteLine(out);
+					}
+				 }
+			   else
+			     {
+				 message("Warn: No current price for symbol "+sym,WARNING_LEVEL);
+				 }
+			}
+		else
+			{
+			//error = true;
+			message("Error: could not retreive latest prices for symbol="+sym, ERROR_LEVEL);
+			message("  Code " + WinHttpReq.Status + " retrieving " + urlcurr.toUrl(), ERROR_LEVEL);
+			}
+		  
+		 // history for current sym next
+		 if ( numDays > 0 )
+		    {
+			message("Info: History Price Treatment for symbol=" + sym, INFO_LEVEL);
 
-    // get historical data, and write it to the output file
-    for (i in symbols_array) {
-        var sym = symbols_array[i];
-        var url = urlhist.toUrl(sym);
-        message("Sym=" + sym + ", URL=" + url, INFO_LEVEL);
-        WinHttpReq.Open("GET", url, false);
-        WinHttpReq.Send();
-        if (WinHttpReq.Status == HTTP_STATUS_OK) { // 200
-            message(WinHttpReq.ResponseText, DEBUG_LEVEL);
+			var url = urlhist.toUrl(sym);
+			
+			//var WinHttpReq = new ActiveXObject("WinHttp.WinHttpRequest.5.1");
+            //WinHttpReq.SetTimeouts(30000, 30000, 30000, 30000)
+			
+			WinHttpReq.Open("GET", url, false);
+			WinHttpReq.Send();
 
-            var lines = WinHttpReq.ResponseText.split("\n");
-            for(var i in lines) {
-                var out = urlhist.toQuicken(lines[i], sym);
-                message("lines i------ " + i + " " + lines[i] + " out=" + out, DEBUG_LEVEL);
-                if (out) {
-                    outFile.WriteLine(out);
-                }
-            }
-        } else {
-            // error, could not retrieve page
-            // some errors may be fine - if start date is recent and no
-            // closing prices exist for that symbol from that date
-            message("Error: could not retreive historical prices for symbol="+sym, ERROR_LEVEL);
-            message("  Code " + WinHttpReq.Status + " retrieving " + url, ERROR_LEVEL);
-        }
-    }
-
-    // get current prices for all symbols, and write to output file
-    // only do this if we did not get any historical dates. This is necessary
-    // because the urls used are different, and the prices may be differently scaled
-    // too (in UK, one url returns pence values, other returns pounds, for example).
-    if (numDays <= 0) {
-        var urlcurr = new UrlCurrForSymbols( symbols );
-        message("URL=" + urlcurr, INFO_LEVEL);
-        WinHttpReq.Open("GET", urlcurr.toUrl(), false);
-        WinHttpReq.Send();
-        if (WinHttpReq.Status == HTTP_STATUS_OK) { // 200
-            message(WinHttpReq.ResponseText, DEBUG_LEVEL);
-            // Was \r\n before April 2015, but that broke, so now just use \n
-            var lines = WinHttpReq.ResponseText.split("\n");
-            for(var i in lines) {
-                var out = urlcurr.toQuicken(lines[i]);
-                message("lines i------ " + i + " " + lines[i] + " out=" + out, DEBUG_LEVEL);
-                if (out) {
-                    outFile.WriteLine(out);
-                }
-            }
-        } else {
-            error = true;
-            message("Error: could not retreive latest prices for symbols="+symbols, ERROR_LEVEL);
-            message("  Code " + WinHttpReq.Status + " retrieving " + urlcurr.toUrl(), ERROR_LEVEL);
-        }
-    }
-
-    // done with file and http
-    outFile.Writeline("^"); 
-    outFile.Close();
-    // WinHttpReq.Close(); // wrong call..?
-    return !error;
-} // getPrices()
+			if (WinHttpReq.Status == HTTP_STATUS_OK)  // response code 200
+				{
+				// scan to see if prices and dates can be found
+				
+				var AllPrices = [];
+				var AllDates = [];
+		 		// arrays are passed by reference so adding values within function will really add here too!
+				var ret = urlhist.getPriceDate(WinHttpReq.ResponseText,AllPrices,AllDates);
+				if (ret)
+					{
+					// both arrays have equal length
+					for (i=0; i < AllPrices.length;i++)
+					    {
+						var out=urlhist.toQuicken(AllDates[i],AllPrices[i],sym);			
+						if (out)
+							{
+							outFile.WriteLine(out);
+							}
+						}
+					}
+				}
+			else
+				{
+				// error, could not retrieve page
+				// some errors may be fine - if start date is recent and no
+				// closing prices exist for that symbol from that date
+				//
+				 message("Error: could not retreive historical prices for symbol=" + sym, ERROR_LEVEL);
+				 message("  Code " + WinHttpReq.Status + " retrieving " + url, ERROR_LEVEL);
+				}
+			}
+		}				
+	
+	
+	return !error;
+    } // getPrices()
 
 //---------------------------------------------------------------------
 // Windows automation - start Quicken application, and when it is
@@ -394,7 +619,7 @@ function doAutomation(outFilePath) {
         // this brings up the "Import Price Data" dialog box
         escapedPath = escapeSendKeys(outFilePath);
         appSendKeys(escapedPath, QTITLE); // enter file name
-        appSendKeys("{ENTER}", QTITLE);   // send file name
+	    appSendKeys("{ENTER}", QTITLE);   // send file name
         // final OK - this should be sent only after file has been loaded,
         // otherwise it will cause the Cancel button to be clicked!
         // let user click OK, so they can see number of prices imported
@@ -474,20 +699,16 @@ function getTempDir() {
     var t = WSH.ExpandEnvironmentStrings("%TMP%");
     if (!t) t = WSH.ExpandEnvironmentStrings("%TEMP%");
     if (!t) t = 'C:\\WINDOWS\\TEMP';
+	
     return t;
-}
-
-//---------------------------------------------------------------------
-function getDateDaysPast(count) {
-    var d = new Date(TODAY.valueOf() - count * MS_IN_DAY);
-    return d;
 }
 
 //---------------------------------------------------------------------
 // truncate given number to 2 chars, or prefix with 0 to make it 2 chars
 function trunc2(n) {
-    var nn = "0" + n;
-    return nn.substr(nn.length - 2);
+    var nn = "0"+n;
+	return nn.slice(-2);
+	
 }
 
 //---------------------------------------------------------------------
