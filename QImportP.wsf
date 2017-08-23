@@ -793,8 +793,6 @@ function getTempDir() {
     if (!t) t = WSH.ExpandEnvironmentStrings("%TEMP%");
     if (!t) t = 'C:\\WINDOWS\\TEMP';
 	
-// specific to AJT
-    t = "C:\\QImportP";
     return t;
 }
 
