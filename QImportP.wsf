@@ -175,19 +175,56 @@ function UrlHist(numdays)
 			
 			// First get the google provided symbol name from the "meta Description block" because user data may not have the market prefix
 	        //  and there is specific action if the symbol is for a mutual fund (MUTF (including MUTF_GB etc))
-			var descrBlock = webHtml.match(/<meta name=Description.+?>/)[0];  // meta Description line contains market:symbol
-			var webMktSymb = descrBlock.match(/\(.+\)/)[0];  // market:sybmol is surrounded by (....)
+			var descrBlock = webHtml.match(/<meta name=Description.+?>/);   // market:symbol is contained within meta description
+			if (descrBlock == null)
+				{
+				message("Warn: No descrBlock returned",WARNING_LEVEL);
+				return false;
+				}
+			descrBlock = descrBlock[0];
+			
+			var webMktSymb = descrBlock.match(/\(.+\)/);  // market:sybmol is surrounded by (....)
+			// if nothing found in brackets, chances are user supplied invalid symbol
+			if (webMktSymb == null)
+                {
+				message("Warn: Symbol not found in Google history",WARNING_LEVEL);
+				return false;
+                }
+				
+			webMktSymb = webMktSymb[0];
 			var webMktSymb = webMktSymb.replace(/\(|\)/g,"");  // remove the brackets
 			var webMarket = webMktSymb.substr(0,webMktSymb.indexOf(":"));  // part before the ":"
 			var webSymb = webMktSymb.substr(webMktSymb.indexOf(":")+1);     // part after the ":"
-				
+
+			// Never used because history url returns invalid symbol
+            // if webMarket = CURRENCY, there is no history 
+            //if (webMarket == "CURRENCY")
+			//	{
+			//	message("Info: CURRENCY type, google returns no history"+sym,INFO_LEVEL);
+			//	return false;
+            //    }
+
+			
 			// the prices table we are interested is has class="gf-table historical_price"
-			var priceDiv = webHtml.match(/<table class\=\gf-table historical_price.+\/table>/)[0];
+			var priceDiv = webHtml.match(/<table class\=\gf-table historical_price.+\/table>/);
+			if ( priceDiv == null )
+			   {
+			   message("Error: scrape for \"gf-table historical_price\" - check script",ERROR_LEVEL);
+			   return false;
+			   }
+			priceDiv = priceDiv[0];
 				
 			// we have a sort of table now ... but there are no </th> </td> and </tr> tags - shame on you google
 			// lets quickly correct that
 			// I'm only interested in <td> tags so lets extract them
-			var priceDiv = priceDiv.match(/<td.*</g)[0];
+			var priceDiv = priceDiv.match(/<td.*</g);
+			if ( priceDiv == null )
+			   {
+			   message("Error: priceDiv contains no \"<td>\" - check script",ERROR_LEVEL);
+			   return false;
+			   }
+			priceDiv = priceDiv[0];
+			
 			// now to add the </td> tags
 			var tableData = priceDiv.replace(/<td/g,"</td><td"); // add a </td> block in front of all <td>
 			var tableData = tableData.replace("</td>","");  // remove first </td> created above
@@ -202,9 +239,10 @@ function UrlHist(numdays)
 			// so we load these into the dom parsor
 			myDom.loadXML("<table>"+tableData+"</table>");
 			var myPrices = myDom.getElementsByTagName("td");
+			
 			if (myPrices.length == 0)
 			    message("Error: No historic prices found - Table Format error?",ERROR_LEVEL);
-						
+			
 			// For normal stock;		
 			// the data is in groups of 6
 			// date, open, high, low, close, volume
@@ -244,7 +282,7 @@ function UrlHist(numdays)
 			}
 		catch(err)
 			{
-			message("Warn: Cannot find match/replace in getPriceDate() "+err.message,WARNING_LEVEL);
+			message("Warn: Cannot find match/replace in getPriceDate() "+err.message,WARNING_LEVEL)
 			return false;
 			}
 		return true;
@@ -302,18 +340,70 @@ function UrlCurr()
 			{
 			// make it easier to identify the html fields
 			var webHtml = ResponseText.replace(/(?:\r\n|\r|\n|\\n|"|,)/g, "");  // replace lf, cr, "\n" and "(quote) with nothing
+
+			// validate the symbol ... also allows seperate action for CURRENCY type
+			var descrBlock = webHtml.match(/<meta name=Description.+?>/);   // market:symbol is contained within meta description
+			if (descrBlock == null)
+				{
+				message("Warn: No descrBlock returned",WARNING_LEVEL);
+				return 0;
+				}
+			descrBlock = descrBlock[0];
 			
-			var priceBlock = webHtml.match(/<span class=pr.+?<\/span>/)[0]; 
+			var webMktSymb = descrBlock.match(/\(.+\)/);  // market:sybmol is surrounded by (....)
+			// if nothing found in brackets, chances are user supplied invalid symbol
+			if (webMktSymb == null)
+                {
+				message("Error: Symbol not found - check on www.google.com/finance",ERROR_LEVEL);
+				return 0;
+                }
+			webMktSymb = webMktSymb[0];
 			
-			// get the price bits
-			var currPrice = priceBlock.match(/>\d+.+?</)[0];  // gets number between ">" and "<" 
+			var webMktSymb = webMktSymb.replace(/\(|\)/g,"");  // remove the brackets
+			var webMarket = webMktSymb.substr(0,webMktSymb.indexOf(":"));  // part before the ":"
+			var webSymb = webMktSymb.substr(webMktSymb.indexOf(":")+1);     // part after the ":"
 			
-			// remove the leading/trailing "<" and ">"
-			currPrice = currPrice.replace(/[<|>]/g,"");		
+			// CURRENCY type has different html tags
+			if ( webMarket == "CURRENCY" )
+				{
+				var priceBlock = webHtml.match(/<span class=bld.+?<\/span>/); // get the price bits
+				if ( priceBlock == null )
+					{
+					message("Error: priceBlock contains no \"<td>\" for Currency - check script",ERROR_LEVEL);
+					return 0;
+					}
+				priceBlock = priceBlock[0];
+				var currPrice = priceBlock.match(/>\d+.+? /);  // gets number between ">" and " "
+				if ( currPrice == null )
+					{
+					message("Error: currPrice contains no \">value \" for Currency - check script",ERROR_LEVEL);
+					return 0;
+					}
+				currPrice = currPrice[0];
+				currPrice = currPrice.replace(/[>| ]/g,""); // remove the leading/trailing ">" and " "
+				}
+			 else
+				{
+				var priceBlock = webHtml.match(/<span class=pr.+?<\/span>/); // get the price bits
+				if ( priceBlock == null )
+					{
+					message("Error: priceBlock contains no \"<span class=pr\" - check script",ERROR_LEVEL);
+					return 0;
+					}
+				priceBlock = priceBlock[0];
+				var currPrice = priceBlock.match(/>\d+.+?</);  // gets number between ">" and "<" 
+				if ( currPrice == null )
+					{
+					message("Error: currPrice contains no \">value<\" - check script",ERROR_LEVEL);
+					return 0;
+					}
+				currPrice = currPrice[0];
+				currPrice = currPrice.replace(/[<|>]/g,""); // remove the leading/trailing "<" and ">"
+				}
 			}
 		catch(err)
 			{
-			message("WARN: Cannot find current price in getPrice() "+err.message,WARNING_LEVEL)
+			message("Error: Cannot find current price in getPrice() "+err.message,ERROR_LEVEL)
 			return 0;
 			}
 			
@@ -482,19 +572,22 @@ function getPrices(symbols, numDays, outFilePath)
 		if (WinHttpReq.Status == HTTP_STATUS_OK) 
 			{
 			 currPrice = urlcurr.getPrice(WinHttpReq.ResponseText);
-			 useDate = urlcurr.getDate(WinHttpReq.ResponseText);
-			 if (currPrice > 0 && typeof useDate != "undefined") // AJT ** And useDate is set correctly ?!
+			 if ( currPrice > 0 ) 
 			     {
-				 var out = urlcurr.toQuicken(currPrice, sym, useDate); 
-			     if (out)
+				 useDate = urlcurr.getDate(WinHttpReq.ResponseText);
+				 if ( typeof useDate != "undefined" )
 					{
-					outFile.WriteLine(out);
+					var out = urlcurr.toQuicken(currPrice, sym, useDate); 
+					if (out)
+						{
+						outFile.WriteLine(out);
+						}
 					}
 				 }
-			   else
-			     {
-				 message("Warn: No current price for symbol "+sym,WARNING_LEVEL);
-				 }
+			// else
+			//   {
+			//	 message("Warn: No current price for symbol "+sym,WARNING_LEVEL);
+			//	 }
 			}
 		else
 			{
@@ -700,6 +793,8 @@ function getTempDir() {
     if (!t) t = WSH.ExpandEnvironmentStrings("%TEMP%");
     if (!t) t = 'C:\\WINDOWS\\TEMP';
 	
+// specific to AJT
+    t = "C:\\QImportP";
     return t;
 }
 
