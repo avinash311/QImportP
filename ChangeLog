@@ -13,6 +13,11 @@
   Try those after couple of hours after market close, around 7PM using Mutual
   Fund symbols - Google quoted prices are much older than Yahoo quotes.
 
+* Note that symbol names need to be different for Yahoo vs Google.
+  See the description below (Version 1.0) for Google symbol names.
+  Yahoo names can be found using their website, for example:
+  CADUSD=X has to be used with /yahoo and CADUSD when /yahoo is not used.
+
 2017-08-08
 
 * New Major Version 1.0 (Because of significant logic changes in the method of getting prices)
