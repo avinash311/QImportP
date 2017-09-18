@@ -1,3 +1,18 @@
+2017-09-18
+
+* Version 1.5. Adds back support for current prices using Yahoo API
+  Yahoo API is much faster since a single web request gets multiple symbol
+  prices, and does not have to screen scrape.
+  Added /yahoo option to force use of Yahoo API. This only supports current
+  prices, does not support historical quotes.
+  Additionally, Yahoo is more current (0-1 days old) vs Google (1-2 days old).
+  Example:
+  http://download.finance.yahoo.com/d/quotes.csv?f=sl1d1hgv&e=.csv&s=VTSAX
+  vs
+  https://www.google.com/finance?q=VTSAX
+  Try those after couple of hours after market close, around 7PM using Mutual
+  Fund symbols - Google quoted prices are much older than Yahoo quotes.
+
 2017-08-08
 
 * New Major Version 1.0 (Because of significant logic changes in the method of getting prices)
