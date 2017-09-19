@@ -1,6 +1,6 @@
 2017-09-18
 
-* Version 1.5. Adds back support for current prices using Yahoo API
+* Version 1.51. Adds back support for current prices using Yahoo API
   Yahoo API is much faster since a single web request gets multiple symbol
   prices, and does not have to screen scrape.
   Added /yahoo option to force use of Yahoo API. This only supports current
