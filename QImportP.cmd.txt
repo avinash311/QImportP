@@ -6,20 +6,25 @@
 setlocal
 @REM
 @REM --- 
-@REM /s:       symbols comma separated names, like "C,CSCO"
+@REM /gcsv: Google Spreadsheet CSV download link containing symbols and current prices
+@REM   Example: https://docs.google.com/spreadsheets/d/1yScgAHCOIgDHL3jZ7FoAwBBtR7EUYlKPZZ_XZ51MSNA/edit?usp=sharing
+@REM   Use www.google.com/finance to search the full Google symbol and use MARKET:SYMBOL format to avoid ambiguity
+
 @REM /automate Start Quicken and import prices into Quicken
-@REM /div:100  Divide prices by 100 (can use any number instead of 100)
-@REM           If a symbol in "/s" is prefixed by "!" it will ignore /div for that symbol
+
 @REM /dmy:D/M/Y  D,M & Y are replaced in the string with date values to format the date 
 @rem                    (Default is M/D/Y) - D & M are 2 digit, Y is 4 digits
+
 @REM /v:       Verbose level - 0 (default), 1, 2, or 3 (most output)
-@REM /symonly  Ignore the exchange part of symbol in output (eg. LON:LLOY will be output as LLOY) 
-@REM --- edit the following lines, filling in symbols and correcting args
-@REM Use www.google.com/finance to search the full Google symbol and use MARKET:SYMBOL format to avoid ambiguity
+
+@REM /symonly  Ignore the exchange part of symbol in quicken output (eg. LON:LLOY will be output as LLOY) 
+
+@REM --- edit the following lines, filling in correct URL and updating args
 @REM  however, using only the SYMBOL part is possible but it can return results for an unintended market
-set SYMBOLS="C,CSCO"
-set ARGUMENTS=/automate
+@REM example spreadsheet:
+set URL="https://docs.google.com/spreadsheets/d/1yzIpQRdfJh5hm5y9tF7LW060eLH8rkXr7PW4SFwkLlY/export?format=csv"
+set ARGUMENTS=/automate /symonly
 set WSFPATH=\bin\QImportP.wsf
 @REM --- 
 @REM
-cscript %WSFPATH%   /s:%SYMBOLS%   %ARGUMENTS%   %*
+cscript %WSFPATH%   /gcsv:%URL%   %ARGUMENTS%   %*

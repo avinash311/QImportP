@@ -1,3 +1,26 @@
+2017-12-08
+
+* Version 2.00
+
+* Added support for CSV download. This can be used to create a Google
+  Spreadsheet with 
+  Example spreadsheet:
+  https://docs.google.com/spreadsheets/d/1yzIpQRdfJh5hm5y9tF7LW060eLH8rkXr7PW4SFwkLlY/edit?usp=sharing
+  To download as CSV URL for above spreadsheet, change /edit to:
+  https://docs.google.com/spreadsheets/d/1yzIpQRdfJh5hm5y9tF7LW060eLH8rkXr7PW4SFwkLlY/export?format=csv
+  See the example script QImportP.cmd.txt for details on using the /gcsv:
+  argument.
+
+* yahoo disabled support for
+  http://download.finance.yahoo.com/d/quotes.csv?f=sl1d1hgv&e=.csv&s=VTSAX
+  so /yahoo option no longer works.
+
+* google finance pages have changed, so the 1.0 version "screen scraping"
+  method is currently broken. Leaving it in for now, will be removed in
+  a future release if it can't be updated.
+  https://www.google.com/finance?q=VTSAX
+  So /s: symbols options no longer works.
+
 2017-09-18
 
 * Version 1.51. Adds back support for current prices using Yahoo API

@@ -3,7 +3,7 @@
 <job id="QImportP">
 <?job error="true" debug="true"?>
 <resource id="version">
-    1.51, 2017-09-18
+    2.00, 2017-12-02
 </resource>
 <resource id="homepage">
     http://www.aczoom.com/tech/import-prices-script-for-quicken/
@@ -36,6 +36,9 @@
     <named name = "automate"
         helpstring = "Start Quicken and import prices into Quicken"
         type = "simple" required = "false"/>
+    <named name = "gcsv"
+        helpstring = "Google Spreadsheet Download as CSV URL."
+        type = "string" required = "false"/>
     <named name = "days"
         helpstring = "Get historical quotes for these many number of days (default 0 = current prices only)"
         type = "string" required = "false"/>
@@ -429,7 +432,7 @@ function UrlCurrFromGoogle()
 
     }
 
-// --------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
 // OBJECTS - UrlCurrFromYahoo
 // for getting current (last business day) prices from Yahoo API
 // gets data like this - note that some dates may be today, some in past!
@@ -454,8 +457,8 @@ function UrlCurrFromYahoo(ss) {
     };
     this.toQuicken = function (line) { // from given yahoo data line, create quicken suitable import line
 
-        // given an current prices data line from Yahoo, convert it to a
-        // Quicken import file line - which is just symbol,date,price
+        // given an current prices data line from Yahoo, convert it.
+        // Quicken import file line is: symbol,price,date
         var items = line.split(",",6);
         var ret = "";
         if (items[0] && items[1] && items[2]) {
@@ -489,6 +492,88 @@ function UrlCurrFromYahoo(ss) {
     };
 }
 
+// ------------------------------------------------------------------------------------------------
+// Download Google Spreadsheet with ticker symbol and prices as a CSV file.
+
+// OBJECTS - UrlCurrFromGoogleCSV
+function UrlCurrFromGoogleCSV(url) {
+    this.url = url;
+    this.toUrl = function () {
+        return this.url;
+    };
+    this.toQuicken = function (line) { // from given google spreadsheet data line, create quicken suitable import line
+
+        var items = line.split(",",6);
+        // Google Spreadsheet contains price data with these columns:
+        var symb = items[0]; // Google Ticker symbol, ex: VTSAX or LON:ABD
+        var price = items[1];
+        var mdy = items[2]; // US date format
+
+        if (SYMONLY)
+             symb = symb.substr(symb.indexOf(":")+1);
+
+        // Quicken import file line is: symbol,price,date
+        var ret = "";
+        if (symb && price && mdy) {
+            // the date format returned is "M/dd/yyyy" with quotes
+            // so here's an extra process which allows easy switch
+            // between month and day, needed for non-US processing
+            var ymd = mdy.replace(/\"/g,"");
+            ymd = ymd.split("/", 3);
+            if (ymd.length == 3) {
+                if (DATE_FORMAT == "D/M/Y") {
+                    ret = "" + symb + ", " + price + ", " + ymd[1] + "/" + ymd[0] + "/" + ymd[2];
+                } else {
+		    // TODO: should support other date formats, such as D-M-Y etc, see FromGoogle functions.
+                    // For now, this writes the date as received from Google Spreadsheet: M/D/Y
+                    ret = "" + symb + ", " + price + ", " + mdy;
+                }
+            }
+        }
+        return ret;
+    };
+    this.toString = function () { // just here for debugging
+        return this.url;
+    };
+}
+
+//---------------------------------------------------------------------
+// This makes a single http request, so downloads all symbols in one http call.
+function getPricesFromGoogleCSV(googleCSV, outFile) {
+
+    var error = false;
+
+    var urlcurr = new UrlCurrFromGoogleCSV( googleCSV );
+    // setup HTTP connections, with appropriate timeouts
+    var WinHttpReq = new ActiveXObject("WinHttp.WinHttpRequest.5.1");
+    WinHttpReq.SetTimeouts(30000, 30000, 30000, 30000);
+
+    message("URL=" + googleCSV, INFO_LEVEL);
+    WinHttpReq.Open("GET", urlcurr.toUrl(), false);
+    WinHttpReq.Send();
+    if (WinHttpReq.Status == HTTP_STATUS_OK) { // 200
+	message("WinHttpReq.ResponseText:", DEBUG_LEVEL + 1);
+	message(WinHttpReq.ResponseText, DEBUG_LEVEL + 1);
+	var lines = WinHttpReq.ResponseText.split(/\r?\n/);
+	for(var i in lines) {
+	    message("lines i------ " + i + " " + lines[i], DEBUG_LEVEL);
+	    var out = urlcurr.toQuicken(lines[i]);
+	    if (out) {
+	        message(" quicken out=" + out, DEBUG_LEVEL);
+		outFile.WriteLine(out);
+	    } else {
+	        message(" skip", DEBUG_LEVEL);
+            }
+	}
+    } else {
+	error = true;
+	message("Error: could not retreive latest prices from "+googleCSV, ERROR_LEVEL);
+	message("  Code " + WinHttpReq.Status + " retrieving " + urlcurr.toUrl(), ERROR_LEVEL);
+    }
+
+    return !error;
+} // getPricesFromGoogleCSV()
+
 //---------------------------------------------------------------------
 // get current prices for given list of symbols. Uses Yahoo Financial API.
 // This makes a single http request for all symbols at once.
@@ -514,8 +599,7 @@ function getPricesFromYahoo(symbols, numDays, outFile) {
     WinHttpReq.Send();
     if (WinHttpReq.Status == HTTP_STATUS_OK) { // 200
 	message(WinHttpReq.ResponseText, DEBUG_LEVEL);
-	// Was \r\n before April 2015, but that broke, so now just use \n
-	var lines = WinHttpReq.ResponseText.split("\n");
+	var lines = WinHttpReq.ResponseText.split(/\r?\n/);
 	for(var i in lines) {
 	    var out = urlcurr.toQuicken(lines[i]);
 	    message("lines i------ " + i + " " + lines[i] + " out=" + out, DEBUG_LEVEL);
@@ -564,6 +648,7 @@ message("Output file name = " + outFilePath, INFO_LEVEL);
 var symbols = getArgVal('s', argsNamed, SYMBOLS_DEFAULT);
 var numDays = getArgVal('days', argsNamed, NUMDAYS_DEFAULT);
 var automate = getArgVal('automate', argsNamed, false);
+var googleCSV = getArgVal('gcsv', argsNamed, false);
 
 var outFile = FSO.CreateTextFile(outFilePath);
 
@@ -572,7 +657,9 @@ if (outFile) {
     outFile.Writeline("!Type:Prices");
 
     var gotPrices = false;
-    if (getArgVal('yahoo', argsNamed, false)) {
+    if (googleCSV) {
+        gotPrices = getPricesFromGoogleCSV(googleCSV, outFile);
+    } else if (getArgVal('yahoo', argsNamed, false)) {
         gotPrices = getPricesFromYahoo(symbols, numDays, outFile);
     } else {
         gotPrices = getPricesFromGoogle(symbols, numDays, outFile);
