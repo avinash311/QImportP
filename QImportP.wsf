@@ -117,7 +117,12 @@ function UrlHistFromGoogle(numdays)
     // Eg. for google =
     //    https://www.google.com/finance/historical?q=LON&num=7
 
-    this.base = "https://www.google.com/finance/historical?q=";
+    // this.base = "https://www.google.com/finance/historical?q=";
+    // 2017-December: this no longer works - get 403 Forbidden Access:
+    // See comments in function UrlCurrFromGoogle() for more details,
+    // this new finance.google.com address may also be unusable soon.
+    this.base = "https://finance.google.com/finance/historical?q=";
+
     this.num = "&num=";
 
     this.toUrl = function (symb)
