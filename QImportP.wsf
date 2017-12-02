@@ -22,6 +22,10 @@
       1) gets current and historical quotes from Google Finance web screens or
          current quotes only from Yahoo Finance API and creates a .csv file of
 	 prices for import into quicken
+         Note: As of 2017, only current dates from Google Spreadsheets /gcsv:
+         option has prices available. All other options such as /s: and /yahoo
+         no longer work since Google and Yahoo have discontinued Finance
+         quotes downloads.
     and if /automate is specified as an argument:
       2) starts Quicken (if not already started),
       3) sends keys to import the prices using Quicken's Import Prices command.
@@ -37,20 +41,24 @@
         helpstring = "Start Quicken and import prices into Quicken"
         type = "simple" required = "false"/>
     <named name = "gcsv"
-        helpstring = "Google Spreadsheet Download as CSV URL."
+        helpstring = "Google Spreadsheet download-as-CSV URL."
         type = "string" required = "false"/>
-    <named name = "days"
-        helpstring = "Get historical quotes for these many number of days (default 0 = current prices only)"
-        type = "string" required = "false"/>
-    <named name = "s"
-        helpstring = "List of comma-separated symbols for pricing (Format [!][exchange:]SYM)"
-        type = "string" required = "true"/>
     <named name = "v"
         helpstring = "verbosity of messages; 0=ERROR,1=WARNING+ERROR, 2=INFO+WARNNG+ERROR. 3=DEBUG+INFO+WARNING+ERROR"
         type = "string" required = "false"/>
     <named name = "dmy"
         helpstring = "Use specified format for date. Ex: M/D/Y (default) or D/M/Y, etc using D, M, Y letters.)"
         type = "simple" required = "false"/>
+    <named name = "help"
+        helpstring = "/? or /h or /help - Print usage description"
+        type = "simple" required = "false"/>
+
+    <named name = "days"
+        helpstring = "Get historical quotes for these many number of days (default 0 = current prices only)"
+        type = "string" required = "false"/>
+    <named name = "s"
+        helpstring = "List of comma-separated symbols for pricing (Format [!][exchange:]SYM)"
+        type = "string" required = "true"/>
     <named name = "div"
         helpstring = "Divide amounts by value, use /div:100 for converting pence into pounds"
         type = "string" required = "false"/>
@@ -60,10 +68,8 @@
     <named name = "yahoo"
         helpstring = "Use Yahoo quotes service. This supports current prices only, no historical quotes."
         type = "string" required = "false"/>
-    <named name = "help"
-        helpstring = "/? or /h or /help - Print usage description"
-        type = "simple" required = "false"/>
-    <example>   Example: cscript QImportP.wsf /s:"C,FMAGX" /automate</example>
+
+    <example>   Example: cscript QImportP.wsf /gcsv:"https://..." /automate</example>
 </runtime>
 
 <object id="WSH" progid="WScript.Shell"/>
@@ -72,8 +78,6 @@
 <![CDATA[
 /*
  * wsh jscript code to pull down current and historical quotes
- * input: a list of symbols (stock, mutual funds, etc)
- *        number of days to get quotes (in the past, 0 = current day)
  * output: a file named QImportP.csv with prices that can be imported
  *         into Quicken 2004, 2005, 2006 and possibly other versions.
  *         File contains historical closing prices, and latest quotes.
@@ -501,20 +505,24 @@ function UrlCurrFromGoogleCSV(url) {
     this.toUrl = function () {
         return this.url;
     };
-    this.toQuicken = function (line) { // from given google spreadsheet data line, create quicken suitable import line
+    this.toQuicken = function (line) {
+        // from given google spreadsheet data line, create quicken suitable import line
 
-        var items = line.split(",",6);
+        var items = line.split(",",4);
         // Google Spreadsheet contains price data with these columns:
         var symb = items[0]; // Google Ticker symbol, ex: VTSAX or LON:ABD
         var price = items[1];
-        var mdy = items[2]; // US date format
+        var mdy = items[2]; // US date format M/D/Y
 
         if (SYMONLY)
              symb = symb.substr(symb.indexOf(":")+1);
 
-        // Quicken import file line is: symbol,price,date
+        // Quicken import file line to return is: symbol,price,date
         var ret = "";
-        if (symb && price && mdy) {
+
+        // Check for valid rows. Simple, crude checks!
+        // isNaN to check for float numbers, and digits or - or / in dates.
+        if (symb && !isNaN(price) && /^[-/\d]+$/.test(mdy)) {
             // the date format returned is "M/dd/yyyy" with quotes
             // so here's an extra process which allows easy switch
             // between month and day, needed for non-US processing
@@ -561,9 +569,7 @@ function getPricesFromGoogleCSV(googleCSV, outFile) {
 	    if (out) {
 	        message(" quicken out=" + out, DEBUG_LEVEL);
 		outFile.WriteLine(out);
-	    } else {
-	        message(" skip", DEBUG_LEVEL);
-            }
+	    }
 	}
     } else {
 	error = true;
