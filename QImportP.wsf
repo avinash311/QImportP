@@ -3,7 +3,7 @@
 <job id="QImportP">
 <?job error="true" debug="true"?>
 <resource id="version">
-    2.00, 2017-12-02
+    2.10, 2017-12-02
 </resource>
 <resource id="homepage">
     http://www.aczoom.com/tech/import-prices-script-for-quicken/
@@ -20,12 +20,8 @@
 <runtime>
     <description>This Windows JScript program:
       1) gets current and historical quotes from Google Finance web screens or
-         current quotes only from Yahoo Finance API and creates a .csv file of
-	 prices for import into quicken
-         Note: As of 2017, only current dates from Google Spreadsheets /gcsv:
-         option has prices available. All other options such as /s: and /yahoo
-         no longer work since Google and Yahoo have discontinued Finance
-         quotes downloads.
+         current quotes from Google Spreadsheets in downloadable CSV format,
+	 for import into quicken
     and if /automate is specified as an argument:
       2) starts Quicken (if not already started),
       3) sends keys to import the prices using Quicken's Import Prices command.
@@ -65,9 +61,6 @@
     <named name = "symonly"
         helpstring = "output only the symbol excluding exchange (eg. LON:FDI outputs FDI)"
         type = "simple" required = "false"/>
-    <named name = "yahoo"
-        helpstring = "Use Yahoo quotes service. This supports current prices only, no historical quotes."
-        type = "string" required = "false"/>
 
     <example>   Example: cscript QImportP.wsf /gcsv:"https://..." /automate</example>
 </runtime>
@@ -293,9 +286,20 @@ function UrlHistFromGoogle(numdays)
 
 //---------------------------------------------------------------------
 // urlCurrent - for getting current prices, using Google API
+
 function UrlCurrFromGoogle()
     {
-    this.base = "https://www.google.com/finance?q=";
+    // this.base = "https://www.google.com/finance?q=";
+    // 2017-December: this no longer works - get 403 Forbidden Access:
+    // Debug: Current Price Treatment for symbol url=https://www.google.com/finance?q=GOOG
+    // Error: could not retreive latest prices for symbol=GOOG
+    //  Code 403 retrieving https://www.google.com/finance?q=GOOG
+    // But for now, at least this URL works fine, though note that
+    // this URL hosts old Google Finance web pages that have been
+    // marked as obsolete, and the new Google Finance Web (now in Beta,
+    // according to the footers on finance.google.com quotes) does not
+    // support this type of price retrieval:
+    this.base = "https://finance.google.com/finance?q=";
 
     this.toUrl = function (symb)
         {
@@ -437,66 +441,6 @@ function UrlCurrFromGoogle()
     }
 
 // ------------------------------------------------------------------------------------------------
-// OBJECTS - UrlCurrFromYahoo
-// for getting current (last business day) prices from Yahoo API
-// gets data like this - note that some dates may be today, some in past!
-// "C",1.02,"3/5/2009",1.11,0.97,563658432
-// "VIGRX",17.63,"3/4/2009",N/A,N/A,N/A
-//  This was done because Yahoo is much faster since it returns just the quotes,
-//  and it is more current (0-1 days old) vs Google (1-2 days old). Example:
-//  http://download.finance.yahoo.com/d/quotes.csv?f=sl1d1hgv&e=.csv&s=VTSAX
-//  vs
-//  https://www.google.com/finance?q=VTSAX
-//  Try those after couple of hours after market close, around 7PM using Mutual
-//  Fund symbols - Google quoted prices are much older than Yahoo quotes.
-
-function UrlCurrFromYahoo(ss) {
-    this.originalSymbols = ss;
-    // Remove any ! in the string, !<sym> is used to avoid DIV_NUM on the price
-    var re = /!/g;
-    var symbols = ss.replace(re, "");
-    this.url = "http://download.finance.yahoo.com/d/quotes.csv?f=sl1d1hgv&e=.csv&s=" + symbols;
-    this.toUrl = function () {
-        return this.url;
-    };
-    this.toQuicken = function (line) { // from given yahoo data line, create quicken suitable import line
-
-        // given an current prices data line from Yahoo, convert it.
-        // Quicken import file line is: symbol,price,date
-        var items = line.split(",",6);
-        var ret = "";
-        if (items[0] && items[1] && items[2]) {
-            // items[1] may be in pence and imports are in pounds, UK issue
-            // May be used for other conversions too - exchange rate, for example.
-	    // Skip this division if the symbol was prefixed with ! in the input.
-	    var skipRe = new RegExp("!" + items[0] + "\\b");
-            if (DIV_NUM > 0 && !skipRe.test(this.originalSymbols)) {
-                // The * 10000)/10000 is to get upto 4 decimal places precision
-                items[1] = Math.round(parseFloat(items[1])/DIV_NUM * 10000)/10000;
-            }
-            // the date format returned is "M/dd/yyyy" with quotes
-            // so here's an extra process which allows easy switch
-            // between month and day, needed for non-US processing
-            var ymd = items[2].replace(/\"/g,"");
-            ymd = ymd.split("/", 3);
-            if (ymd.length == 3) {
-                if (DATE_FORMAT == "D/M/Y") {
-                    ret = "" + items[0] + ", " + items[1] + ", " + ymd[1] + "/" + ymd[0] + "/" + ymd[2];
-                } else {
-		    // TODO: should support other date formats, such as D-M-Y etc, see FromGoogle functions.
-                    // For now, this writes the date as received from Yahoo: M/D/Y
-                    ret = "" + items[0] + ", " + items[1] + ", " + items[2];
-                }
-            }
-        }
-        return ret;
-    };
-    this.toString = function () { // just here for debugging
-        return this.url;
-    };
-}
-
-// ------------------------------------------------------------------------------------------------
 // Download Google Spreadsheet with ticker symbol and prices as a CSV file.
 
 // OBJECTS - UrlCurrFromGoogleCSV
@@ -581,48 +525,6 @@ function getPricesFromGoogleCSV(googleCSV, outFile) {
 } // getPricesFromGoogleCSV()
 
 //---------------------------------------------------------------------
-// get current prices for given list of symbols. Uses Yahoo Financial API.
-// This makes a single http request for all symbols at once.
-function getPricesFromYahoo(symbols, numDays, outFile) {
-
-    if (numDays > 0) {
-	message("Error: Yahoo API only supports days=0 current, non-historical prices.", ERROR_LEVEL);
-    }
-    var error = false;
-
-    // setup HTTP connections, with appropriate timeouts
-    var WinHttpReq = new ActiveXObject("WinHttp.WinHttpRequest.5.1");
-    WinHttpReq.SetTimeouts(30000, 30000, 30000, 30000);
-
-    // setup url
-    var symbols_array = []; // default, no historical data to get
-
-    // get current prices for all symbols, and write to output file
-    // Prices may be scaled (in UK, one url returns pence values, other returns pounds, for example).
-    var urlcurr = new UrlCurrFromYahoo( symbols );
-    message("URL=" + urlcurr, INFO_LEVEL);
-    WinHttpReq.Open("GET", urlcurr.toUrl(), false);
-    WinHttpReq.Send();
-    if (WinHttpReq.Status == HTTP_STATUS_OK) { // 200
-	message(WinHttpReq.ResponseText, DEBUG_LEVEL);
-	var lines = WinHttpReq.ResponseText.split(/\r?\n/);
-	for(var i in lines) {
-	    var out = urlcurr.toQuicken(lines[i]);
-	    message("lines i------ " + i + " " + lines[i] + " out=" + out, DEBUG_LEVEL);
-	    if (out) {
-		outFile.WriteLine(out);
-	    }
-	}
-    } else {
-	error = true;
-	message("Error: could not retreive latest prices for symbols="+symbols, ERROR_LEVEL);
-	message("  Code " + WinHttpReq.Status + " retrieving " + urlcurr.toUrl(), ERROR_LEVEL);
-    }
-
-    return !error;
-} // getPricesFromYahoo()
-
-//---------------------------------------------------------------------
 // get all input parameters
 // NUMDAYS, SYMBOLS...
 
@@ -665,8 +567,6 @@ if (outFile) {
     var gotPrices = false;
     if (googleCSV) {
         gotPrices = getPricesFromGoogleCSV(googleCSV, outFile);
-    } else if (getArgVal('yahoo', argsNamed, false)) {
-        gotPrices = getPricesFromYahoo(symbols, numDays, outFile);
     } else {
         gotPrices = getPricesFromGoogle(symbols, numDays, outFile);
     }
@@ -714,11 +614,12 @@ function getPricesFromGoogle(symbols, numDays, outFile)
 
         // current price for sym
         var url = urlcurr.toUrl(sym);
-        message("Debug: Current Price Treatment for symbol=" + sym, DEBUG_LEVEL);
+        message("Debug: Current Price Treatment for symbol url=" + url, DEBUG_LEVEL);
         WinHttpReq.Open("GET", url, false);
         WinHttpReq.Send();
         if (WinHttpReq.Status == HTTP_STATUS_OK)
             {
+             message("got Response" +  WinHttpReq.ResponseText);
              var currPrice = urlcurr.getPrice(WinHttpReq.ResponseText);
              if ( currPrice > 0 )
                  {
@@ -741,7 +642,7 @@ function getPricesFromGoogle(symbols, numDays, outFile)
             {
             //error = true;
             message("Error: could not retreive latest prices for symbol="+sym, ERROR_LEVEL);
-            message("  Code " + WinHttpReq.Status + " retrieving " + urlcurr.toUrl(), ERROR_LEVEL);
+            message("  Code " + WinHttpReq.Status + " retrieving " + url, ERROR_LEVEL);
             }
 
          // history for current sym next

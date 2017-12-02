@@ -19,12 +19,27 @@ setlocal
 
 @REM /symonly  Ignore the exchange part of symbol in quicken output (eg. LON:LLOY will be output as LLOY) 
 
-@REM --- edit the following lines, filling in correct URL and updating args
+@REM The following options use external web services that
+@REM are marked as deprecated, so may stop working anytime:
+@REM [/s:symbols] [/days:number-of-days] [/div:divide-by]
+
+@REM /s:       symbols comma separated names, like "C,CSCO"
+@REM Use www.google.com/finance to search the full Google symbol and use MARKET:SYMBOL format to avoid ambiguity
 @REM  however, using only the SYMBOL part is possible but it can return results for an unintended market
-@REM example spreadsheet:
-set URL="https://docs.google.com/spreadsheets/d/1yzIpQRdfJh5hm5y9tF7LW060eLH8rkXr7PW4SFwkLlY/export?format=csv"
-set ARGUMENTS=/automate /symonly
+@REM /div:100  Divide prices by 100 (can use any number instead of 100)
+@REM           If a symbol in "/s" is prefixed by "!" it will ignore /div for that symbol
+@REM --- edit the following lines, filling in correct URL and updating args
+
 set WSFPATH=\bin\QImportP.wsf
-@REM --- 
+
+@REM example spreadsheet:
+set URL=/gcsv:"https://docs.google.com/spreadsheets/d/1yzIpQRdfJh5hm5y9tF7LW060eLH8rkXr7PW4SFwkLlY/export?format=csv"
+
+
+@REM set SYMBOLS="C,CSCO"
+
+set ARGUMENTS=/automate /symonly
+
 @REM
-cscript %WSFPATH%   /gcsv:%URL%   %ARGUMENTS%   %*
+@REM cscript %WSFPATH%  %SYMBOLS%   %ARGUMENTS%   %*
+cscript %WSFPATH%  %URL%   %ARGUMENTS%   %*
