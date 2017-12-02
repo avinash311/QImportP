@@ -3,7 +3,7 @@
 <job id="QImportP">
 <?job error="true" debug="true"?>
 <resource id="version">
-    2.10, 2017-12-02
+    2.00, 2017-12-02
 </resource>
 <resource id="homepage">
     http://www.aczoom.com/tech/import-prices-script-for-quicken/

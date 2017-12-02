@@ -13,13 +13,16 @@
 
 * yahoo disabled support for
   http://download.finance.yahoo.com/d/quotes.csv?f=sl1d1hgv&e=.csv&s=VTSAX
-  so /yahoo option no longer works.
+  so /yahoo option no longer works and has been removed.
 
 * google finance pages have changed, so the 1.0 version "screen scraping"
-  method is currently broken. Leaving it in for now, will be removed in
-  a future release if it can't be updated.
-  https://www.google.com/finance?q=VTSAX
-  So /s: symbols options no longer works.
+  method in  previous releases stopped working.
+  This is used when /s: symbols option is used in the input.
+  For now, it has been made to work again using a finance.google.com
+  web url, but note that Google Finance has new pages in their Beta program,
+  so this will stop working soon too.
+  https://www.google.com/finance?q=VTSAX now returns 403 (forbidden)
+  so that changed to use finance.google.com which as of now, still works.
 
 2017-09-18
 
