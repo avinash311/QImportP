@@ -9,7 +9,7 @@
     http://www.aczoom.com/tech/import-prices-script-for-quicken/
 </resource>
 <resource id="copyright">
-    Copyright (c) 2009,2015,2017 ACZoom.com
+    Copyright (c) 2009,2015,2017-2018 ACZoom.com
     Amendments to use Screen Scrape Copyright 2017 (c) 2017 Adrian Talbot
     No Rights Reserved.
     Placed into Public Domain.
@@ -36,6 +36,9 @@
     <named name = "automate"
         helpstring = "Start Quicken and import prices into Quicken"
         type = "simple" required = "false"/>
+    <named name = "avkey"
+        helpstring = "AlphaVantage.co apikey."
+        type = "string" required = "false"/>
     <named name = "gcsv"
         helpstring = "Google Spreadsheet download-as-CSV URL."
         type = "string" required = "false"/>
@@ -53,7 +56,9 @@
         helpstring = "Get historical quotes for these many number of days (default 0 = current prices only)"
         type = "string" required = "false"/>
     <named name = "s"
-        helpstring = "List of comma-separated symbols for pricing (Format [!][exchange:]SYM)"
+        helpstring = "List of comma-separated symbols for pricing (Format [!][exchange:]SYM)
+        ! prefix to suppress /div:divisor division for this symbol.
+        Symbol name needs to be one accepted by remote site - alphavantage.co"
         type = "string" required = "true"/>
     <named name = "div"
         helpstring = "Divide amounts by value, use /div:100 for converting pence into pounds"
@@ -62,7 +67,10 @@
         helpstring = "output only the symbol excluding exchange (eg. LON:FDI outputs FDI)"
         type = "simple" required = "false"/>
 
-    <example>   Example: cscript QImportP.wsf /gcsv:"https://..." /automate</example>
+    <example>
+    Example: cscript QImportP.wsf /gcsv:"https://..." /automate
+    Example: cscript QImportP.wsf /avkey:alphavantage.co-key /s:symbol1,symbol2 /automate
+    </example>
 </runtime>
 
 <object id="WSH" progid="WScript.Shell"/>
@@ -112,6 +120,7 @@ var DIV_NUM = 0; // amounts are divided by this (if non-zero), useful for handli
 //
 // UrlHist - for getting historical prices, for a specified number of days
 // Url is composed of joining components of urlHist.
+// *** 2018-April: This web link is now unusable.
 function UrlHistFromGoogle(numdays)
     {
     // Eg. for google =
@@ -291,7 +300,7 @@ function UrlHistFromGoogle(numdays)
 
 //---------------------------------------------------------------------
 // urlCurrent - for getting current prices, using Google API
-
+// *** 2018-April: This web link is now unusable.
 function UrlCurrFromGoogle()
     {
     // this.base = "https://www.google.com/finance?q=";
@@ -523,6 +532,65 @@ function getPricesFromGoogleCSV(googleCSV, outFile) {
     return !error;
 } // getPricesFromGoogleCSV()
 
+
+//---------------------------------------------------------------------
+// urlCurrent - for getting current prices, using AlphaVantage API
+function UrlCurrFromAV(avKey) {
+
+    this.toUrl = function (symb) {
+        // remove any leading ! which is the flag to ignore "/div"
+        if (symb.charAt(0)=="!")
+            symb = symb.substr(1);
+
+        base = "https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&apikey=" + avKey + "&datatype=csv&symbol="
+        // TODO: support currency lookup which uses a different URL, and only JSON output (no CSV).
+        // https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency=BTC&to_currency=CNY&apikey=demo
+        return base + symb;
+        };
+
+    this.toQuicken = function (symb, line) {
+// Example CSV response, each line is:
+//timestamp,open,high,low,close,volume
+//2018-04-13,94.0500,94.1800,92.4400,93.0800,23332219
+//2018-04-12,92.4300,94.1600,92.4300,93.5800,26758879
+//2018-04-11,92.0100,93.2900,91.4800,91.8600,24872110
+//2018-04-10,92.3900,93.2800,91.6400,92.8800,26939883
+         var dateIndex = 0;
+         var closeIndex = 4;
+         var dateRow = line.split(",");
+        // output format = symb,curr_date,price
+         var urlPrice = dateRow[closeIndex];
+         var dateString = dateRow[dateIndex]; // example: 2018-01-01
+         var useDate = new Date(dateString.substr(0,4),dateString.substr(5,2)-1,dateString.substr(8,2));
+         if (isNaN(urlPrice) || !useDate) {
+           message(symb + " skip non-price row: = " + line, DEBUG_LEVEL);
+           return undefined;
+         }
+
+        // symb leading with ! means ignore "/div" option
+        var dodiv = (DIV_NUM > 0);
+        if (symb.charAt(0)=="!") {
+            dodiv = false;
+            symb = symb.substr(1);
+            }
+
+        if (dodiv)
+           urlPrice = Math.round(parseFloat(urlPrice)/DIV_NUM * 10000)/10000;
+
+        // if SYMONLY, want to output symbol excluding market
+        if (SYMONLY)
+             symb = symb.substr(symb.indexOf(":")+1);
+
+        // date_format = parameter or default D/M/Y (eg. D/M/Y or M-D-Y) need to replace D with Day, M with Month, Y with year
+        var myDateOut = DATE_FORMAT;
+        myDateOut = myDateOut.replace("D",trunc2(useDate.getDate()));
+        myDateOut = myDateOut.replace("M",trunc2(useDate.getMonth()+1));
+        myDateOut = myDateOut.replace("Y",useDate.getFullYear());
+
+        return symb + ',' + myDateOut + ',' + urlPrice;
+        };
+    }
+
 //---------------------------------------------------------------------
 // get all input parameters
 // NUMDAYS, SYMBOLS...
@@ -556,6 +624,7 @@ var symbols = getArgVal('s', argsNamed, SYMBOLS_DEFAULT);
 var numDays = getArgVal('days', argsNamed, NUMDAYS_DEFAULT);
 var automate = getArgVal('automate', argsNamed, false);
 var googleCSV = getArgVal('gcsv', argsNamed, false);
+var avKey = getArgVal('avkey', argsNamed, false);
 
 var outFile = FSO.CreateTextFile(outFilePath);
 
@@ -566,7 +635,10 @@ if (outFile) {
     var gotPrices = false;
     if (googleCSV) {
         gotPrices = getPricesFromGoogleCSV(googleCSV, outFile);
+    } else if (avKey) {
+        gotPrices = getPricesFromAV(avKey, symbols, numDays, outFile);
     } else {
+        // *** 2018-April: This web link is now unusable.
         gotPrices = getPricesFromGoogle(symbols, numDays, outFile);
     }
     if (gotPrices) {
@@ -584,6 +656,85 @@ if (outFile) {
 }
 
 WScript.Quit();
+
+//---------------------------------------------------------------------
+// get both historical and current prices for given list of symbols,
+// depending on input args. Uses AlphaVantage.com
+// This has to make one http request for each symbol,
+// with 1 sec delay between requests.
+// https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol=MSFT&interval=1min&apikey=demo
+function getPricesFromAV(avKey, symbols, numDays, outFile)
+    {
+    message("Start getPrices AlphaVantage.com API", DEBUG_LEVEL);
+
+    var error = false;
+
+    // setup HTTP connections, with appropriate timeouts
+    var WinHttpReq = new ActiveXObject("WinHttp.WinHttpRequest.5.1");
+    WinHttpReq.SetTimeouts(30000, 30000, 30000, 30000)
+
+    // setup current and hist url's. AlphaVantage always returns 100 days.
+    var urlcurr = new UrlCurrFromAV(avKey);
+
+    // for each symbol, get current then historical price
+    var symbols_array = [];
+    symbols_array = symbols.split(",");
+    for (i in symbols_array)
+        {
+         var sym = symbols_array[i];
+         message("Info: Current Price Treatment for symbol=" + sym, INFO_LEVEL);
+
+        // current price for sym
+        var url = urlcurr.toUrl(sym);
+        if (avKey == "demo") url = "https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=MSFT&apikey=demo&datatype=csv";
+
+        WScript.Sleep(1000); // alphavantage.com asks that requests be 1/sec only
+        message("Debug: Current Price Treatment for symbol url=" + url, DEBUG_LEVEL);
+        WinHttpReq.Open("GET", url, false);
+        WinHttpReq.Send();
+        if (WinHttpReq.Status == HTTP_STATUS_OK) {
+	    message("WinHttpReq.ResponseText:", DEBUG_LEVEL + 1);
+	    message(WinHttpReq.ResponseText, DEBUG_LEVEL + 1);
+
+            var lines = WinHttpReq.ResponseText.split(/\r?\n/);
+            for(var i in lines) {
+                message("lines i------ " + i + " " + lines[i], DEBUG_LEVEL);
+                if (i == 0) continue; // title row:  "timestamp,open,high,low,close,volume"
+                var out = urlcurr.toQuicken(sym, lines[i]);
+                if (out) {
+                    message(" quicken out=" + out, DEBUG_LEVEL);
+                    outFile.WriteLine(out);
+                }
+                if (i >= numDays) break; // only output required number of days
+            }
+        } else {
+            error = true;
+            message("Error: could not retreive latest prices from "+url, ERROR_LEVEL);
+            message("  Code " + WinHttpReq.Status + " retrieving " + urlcurr.toUrl(), ERROR_LEVEL);
+        }
+        // var prices = JSON.parse(WinHttpReq.ResponseText);
+        // WSH does not support JSON!! WSH has JScript version 5.7 only. 5.8+ supports JSON.
+// Example JSON response:
+//    "Time Series (Daily)": {
+//        "2018-04-13": {
+//            "1. open": "94.0500",
+//            "2. high": "94.1800",
+//            "3. low": "92.4400",
+//            "4. close": "93.0800",
+//            "5. volume": "23332219"
+//        },
+//        "2018-04-12": {
+//            "1. open": "92.4300",
+//            "2. high": "94.1600",
+//            "3. low": "92.4300",
+//            "4. close": "93.5800",
+//            "5. volume": "26758879"
+//        },
+//     },
+
+      }
+    return !error;
+    } // getPricesFromAV()
 
 //---------------------------------------------------------------------
 // get both historical and current prices for given list of symbols,

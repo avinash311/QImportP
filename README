@@ -8,7 +8,7 @@ QImportP
 
 This Windows JScript program:
     1) Extracts current price quotes from a CSV file on the web such as a
-       Google Spreadsheet.
+       Google Spreadsheet or the AlphaVantage.co web interface.
     If /automate is specified as an argument:
     2) starts Quicken (if not already started - but this is not reliable)
     3) sends keys to import the prices using Quicken's Import Prices command.
@@ -22,10 +22,11 @@ This Windows JScript program:
 
 Usage: QImportP.wsf [/automate] [/gcsv:google-spreadsheet-download-url]
                     [/v:verbose-level] [/dmy:date-format] [/symonly] [/help]
+                    Google Spreadsheet has stale price data for mutual funds.
+                    Maybe 4 days old in many cases.
 
-                    The following options use external web services that
-                    are marked as deprecated, so may stop working anytime:
-                    [/s:symbols] [/days:number-of-days] [/div:divide-by]
+                    Using AlphaVantage.co gets more current prices:
+                    /avkey:your-key /s:symbols [/days:number-of-days] [/div:divide-by]
 
 Options:
 
@@ -43,10 +44,8 @@ symonly    : Ignore the exchange part of symbol in output (eg. Output LON:LLOY a
               - eg. if you have LON:LLOY in the file, edit the value in Quicken
                     using /symonly, ensure only the value LLOY is specified in Quicken)
 
-s          : List of comma-separated symbols for pricing (symbols in google finance format)
-             Recommended to use full Google format (exchange:symbol) to avoid ambiguity
-             (eg. /s:C,UUU will find prices for NYSE:C but the UUU returns price for TSE:UUU and you may want FRA:UUU
-              better to use /s:C,FRA:UUU or even better would be /s:NYSE:C,FRA:UUU)			 
+avkey      : Your personal AlphaVantage key. See their doc: https://www.alphavantage.co/
+s          : List of comma-separated symbols for pricing (symbols in alphavantage.co format)
              Note: prefix symbol with "!" to ignore /div setting for that symbol
 days       : Number of days history to retrieve (default = 0, latest price only)
 div        : Divide amounts by value, for converting pence into pounds, or any other division
@@ -63,39 +62,31 @@ help       : /? or /h or /help - Print usage description
      Change the final /edit?... to /export?format=csv as shown below for the example spreadsheet:
      https://docs.google.com/spreadsheets/d/1yzIpQRdfJh5hm5y9tF7LW060eLH8rkXr7PW4SFwkLlY/export?format=csv"
 
-    The following examples may work only for a while now:
-         /s, /days, /div may soon stop working - it depends on Google Finance
-         Web page formats, and those are currently marked as being deprecated.
+    The following examples require using AlphaVantage: https://www.alphavantage.co/ and
+    using this argument in all the calls below:
+       /avkey:your-personal-alphavangtage.co-key
 
-    cscript QImportP.wsf /s:"CSCO,GE,.DJI,FMAGX,VFINX" /noget
+    cscript QImportP.wsf ... /s:"CSCO,GE,FMAGX,VFINX" /noget
        Will do nothing.
 
-    cscript QImportP.wsf /s:"CSCO,GE,FMAGX,VFINX" /noget /automate
+    cscript QImportP.wsf ... /s:"CSCO,GE,FMAGX,VFINX" /noget /automate
        Will not get any prices, but will use existing QImportP.csv
        file, and start up quicken, and use Windows SendKeys automation
        to import that file into the Quicken Portfolio View.
 
-    cscript QImportP.wsf /s:"CSCO,GE,FMAGX,VFINX" /automate
+    cscript QImportP.wsf ... /s:"CSCO,GE,FMAGX,VFINX" /automate
        Will get prices for above list, latest prices only.
        Downloaded prices are stored in QImportP.csv
        Will start up quicken, and use Windows SendKeys automation
        to import that file into the Quicken Portfolio View.
 	   
-	cscript QImportP.wsf /s:"CSCO,GE,!.DJI,FMAGX,VFINX" /automate /days:7 /dateformat:D-M-Y /div:100
+	cscript QImportP.wsf /s:"CSCO,GE,!FMAGX,VFINX" /automate /days:7 /dateformat:D-M-Y /div:100
        Will get prices for above list, with 7 days history.
-       Downloaded prices are stored in QImportP.csv where the prices will show as price/100 except for .DJI which will have no division
+       Downloaded prices are stored in QImportP.csv where the prices will show as price/100 except for FMAGX which will have no division
 	     and the date format will show as dd-mm-yyy
        Will start up quicken, and use Windows SendKeys automation
        to import that file into the Quicken Portfolio View.
 	   
-	cscript QImportP.wsf /s:"NASDAQ:CSCO,GE,!INDEXDJX:.DJI,FMAGX,VFINX" /automate /days:7 /symonly
-       Will get prices for above list, with 7 days history.
-       Downloaded prices are stored in QImportP.csv, the symbols more correctly specified with exchange:symbol (NASDAQ:CSCO,!INDEXDJX:.DJI) 
-          will be output without the exchange (CSCO, .DJI). Symbols without exchange: will be output asis.
-          The symbol prefix of "!" will do nothing as /div: option is not specified		  
-       Will start up quicken, and use Windows SendKeys automation
-       to import that file into the Quicken Portfolio View.
-
     This program has to be run in a Windows Console terminal,
     or a short-cut can be manually created to run with required arguments.
 
