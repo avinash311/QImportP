@@ -35,7 +35,7 @@ set WSFPATH=\bin\QImportP.wsf
 set SYMBOLS="/s:C,CSCO"
 set AVKEY="/avkey:your-personal-key-from-alphavantage.co"
 
-set ARGUMENTS=/automate /symonly
+set ARGUMENTS=/automate /symonly /v:2
 
 @REM
 @REM cscript %WSFPATH%  %SYMBOLS%   %ARGUMENTS%   %*

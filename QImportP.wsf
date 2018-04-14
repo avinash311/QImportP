@@ -1,4 +1,4 @@
-﻿<?XML version="1.0"?>
+<?XML version="1.0"?>
 <package>
 <job id="QImportP">
 <?job error="true" debug="true"?>
@@ -58,7 +58,8 @@
     <named name = "s"
         helpstring = "List of comma-separated symbols for pricing (Format [!][exchange:]SYM)
         ! prefix to suppress /div:divisor division for this symbol.
-        Symbol name needs to be one accepted by remote site - alphavantage.co"
+        Symbol name needs to be one accepted by remote site - alphavantage.co
+        Note that it takes a second or more to retrieve prices for each symbol."
         type = "string" required = "true"/>
     <named name = "div"
         helpstring = "Divide amounts by value, use /div:100 for converting pence into pounds"
@@ -534,7 +535,7 @@ function getPricesFromGoogleCSV(googleCSV, outFile) {
 
 
 //---------------------------------------------------------------------
-// urlCurrent - for getting current prices, using AlphaVantage API
+// urlCurrent - for getting current prices, using AlphaVantage API. Gets historical prices too.
 function UrlCurrFromAV(avKey) {
 
     this.toUrl = function (symb) {
@@ -682,7 +683,7 @@ function getPricesFromAV(avKey, symbols, numDays, outFile)
     for (i in symbols_array)
         {
          var sym = symbols_array[i];
-         message("Info: Current Price Treatment for symbol=" + sym, INFO_LEVEL);
+         message("Info: Looking up symbol=" + sym, INFO_LEVEL);
 
         // current price for sym
         var url = urlcurr.toUrl(sym);
