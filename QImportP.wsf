@@ -40,7 +40,9 @@
         helpstring = "AlphaVantage.co apikey."
         type = "string" required = "false"/>
     <named name = "gcsv"
-        helpstring = "Google Spreadsheet download-as-CSV URL."
+        helpstring = "Google Spreadsheet download-as-CSV URL. This is very fast so use this whenever possible.
+        This is also very flexible and supports numerous exchanges as well as currency exchange rate quotes.
+        Mutual fund quotes may be 2 business days old, though."
         type = "string" required = "false"/>
     <named name = "v"
         helpstring = "verbosity of messages; 0=ERROR,1=WARNING+ERROR, 2=INFO+WARNNG+ERROR. 3=DEBUG+INFO+WARNING+ERROR"
@@ -97,7 +99,7 @@ var HTTP_STATUS_OK = 200;
 // INPUT parameters
 // command line values override these defaults
 // symbols: list of symbols, comma-separated
-var MESSAGE_LEVEL = 0; // 0,1,2,3... verbosity, debug levels
+var MESSAGE_LEVEL = 1; // WARNING_LEVEL 0,1,2,3... verbosity, debug levels
 var ERROR_LEVEL = 0, WARNING_LEVEL = 1, INFO_LEVEL = 2,  DEBUG_LEVEL = 3;
 
 var SYMBOLS_DEFAULT = 'C,FMAGX';
@@ -327,7 +329,7 @@ function UrlCurrFromGoogle()
 
     this.toQuicken = function (urlPrice, symb, useDate)
          {
-        // output format = symb,curr_date,price
+        // output format = symb,curr_date,price [Wrong? need TICKER,PRICE,DATE?]
 
         // symb leading with ! means ignore "/div" option
         var dodiv = (DIV_NUM > 0);
@@ -350,7 +352,8 @@ function UrlCurrFromGoogle()
     myDateOut = myDateOut.replace("M",trunc2(useDate.getMonth()+1));
     myDateOut = myDateOut.replace("Y",useDate.getFullYear());
 
-    return symb + ',' + myDateOut + ',' + urlPrice;
+    // return symb + ',' + myDateOut + ',' + urlPrice;
+    return symb + ',' + urlPrice + ',' + myDateOut;
 
         };
 
@@ -466,6 +469,7 @@ function UrlCurrFromGoogleCSV(url) {
     };
     this.toQuicken = function (line) {
         // from given google spreadsheet data line, create quicken suitable import line
+        // store as: TICKER,PRICE,DATE
 
         var items = line.split(",",4);
         // Google Spreadsheet contains price data with these columns:
@@ -509,9 +513,10 @@ function getPricesFromGoogleCSV(googleCSV, outFile) {
     var WinHttpReq = new ActiveXObject("WinHttp.WinHttpRequest.5.1");
     WinHttpReq.SetTimeouts(30000, 30000, 30000, 30000);
 
-    message("URL=" + googleCSV, INFO_LEVEL);
+    message("Info: Downloading from spreadsheet URL=" + googleCSV, INFO_LEVEL);
     WinHttpReq.Open("GET", urlcurr.toUrl(), false);
     WinHttpReq.Send();
+    var count = 0;
     if (WinHttpReq.Status == HTTP_STATUS_OK) { // 200
 	message("WinHttpReq.ResponseText:", DEBUG_LEVEL + 1);
 	message(WinHttpReq.ResponseText, DEBUG_LEVEL + 1);
@@ -522,6 +527,7 @@ function getPricesFromGoogleCSV(googleCSV, outFile) {
 	    if (out) {
 	        message(" quicken out=" + out, DEBUG_LEVEL);
 		outFile.WriteLine(out);
+                count += 1;
 	    }
 	}
     } else {
@@ -529,6 +535,7 @@ function getPricesFromGoogleCSV(googleCSV, outFile) {
 	message("Error: could not retreive latest prices from "+googleCSV, ERROR_LEVEL);
 	message("  Code " + WinHttpReq.Status + " retrieving " + urlcurr.toUrl(), ERROR_LEVEL);
     }
+    message("  Downloaded " + count + " quotes from spreadsheet", INFO_LEVEL);
 
     return !error;
 } // getPricesFromGoogleCSV()
@@ -544,22 +551,18 @@ function UrlCurrFromAV(avKey) {
             symb = symb.substr(1);
 
         base = "https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&apikey=" + avKey + "&datatype=csv&symbol="
-        // TODO: support currency lookup which uses a different URL, and only JSON output (no CSV).
+        // TODO?: support currency lookup which uses a different URL, and only JSON output (no CSV).
         // https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency=BTC&to_currency=CNY&apikey=demo
+        // No need: use /gcsv: option to get currencies, since this QImportP
+        // script can download from both the /gcsv spreadsheet and AV quotes.
         return base + symb;
         };
 
     this.toQuicken = function (symb, line) {
-// Example CSV response, each line is:
-//timestamp,open,high,low,close,volume
-//2018-04-13,94.0500,94.1800,92.4400,93.0800,23332219
-//2018-04-12,92.4300,94.1600,92.4300,93.5800,26758879
-//2018-04-11,92.0100,93.2900,91.4800,91.8600,24872110
-//2018-04-10,92.3900,93.2800,91.6400,92.8800,26939883
+         // Store as: TICKER,PRICE,DATE
          var dateIndex = 0;
          var closeIndex = 4;
          var dateRow = line.split(",");
-        // output format = symb,curr_date,price
          var urlPrice = dateRow[closeIndex];
          var dateString = dateRow[dateIndex]; // example: 2018-01-01
          var useDate = new Date(dateString.substr(0,4),dateString.substr(5,2)-1,dateString.substr(8,2));
@@ -567,6 +570,13 @@ function UrlCurrFromAV(avKey) {
            message(symb + " skip non-price row: = " + line, DEBUG_LEVEL);
            return undefined;
          }
+
+        // Example CSV response, each line is:
+        //timestamp,open,high,low,close,volume
+        //2018-04-13,94.0500,94.1800,92.4400,93.0800,23332219
+        //2018-04-12,92.4300,94.1600,92.4300,93.5800,26758879
+        //2018-04-11,92.0100,93.2900,91.4800,91.8600,24872110
+        //2018-04-10,92.3900,93.2800,91.6400,92.8800,26939883
 
         // symb leading with ! means ignore "/div" option
         var dodiv = (DIV_NUM > 0);
@@ -588,7 +598,7 @@ function UrlCurrFromAV(avKey) {
         myDateOut = myDateOut.replace("M",trunc2(useDate.getMonth()+1));
         myDateOut = myDateOut.replace("Y",useDate.getFullYear());
 
-        return symb + ',' + myDateOut + ',' + urlPrice;
+        return symb + ', ' + urlPrice + ', ' + myDateOut;
         };
     }
 
@@ -635,12 +645,16 @@ if (outFile) {
 
     var gotPrices = false;
     if (googleCSV) {
-        gotPrices = getPricesFromGoogleCSV(googleCSV, outFile);
-    } else if (avKey) {
-        gotPrices = getPricesFromAV(avKey, symbols, numDays, outFile);
-    } else {
-        // *** 2018-April: This web link is now unusable.
-        gotPrices = getPricesFromGoogle(symbols, numDays, outFile);
+        gotPrices |= getPricesFromGoogleCSV(googleCSV, outFile);
+    }
+    if (avKey) {
+        gotPrices |= getPricesFromAV(avKey, symbols, numDays, outFile);
+    }
+    if (!googleCSV && !avKey) {
+        // *** 2018-April: This web link is now unusable. Remove code...
+        message("** Warning: web scraping does not not work anymore.  Use /avkey or /gcsv options instead",
+            WARNING_LEVEL);
+        gotPrices |= getPricesFromGoogle(symbols, numDays, outFile);
     }
     if (gotPrices) {
         // done with file and http
@@ -680,10 +694,11 @@ function getPricesFromAV(avKey, symbols, numDays, outFile)
     // for each symbol, get current then historical price
     var symbols_array = [];
     symbols_array = symbols.split(",");
+    message("Info: Looking up quotes from alphavantage.co", INFO_LEVEL);
     for (i in symbols_array)
         {
          var sym = symbols_array[i];
-         message("Info: Looking up symbol=" + sym, INFO_LEVEL);
+         message("  Symbol=" + sym, INFO_LEVEL);
 
         // current price for sym
         var url = urlcurr.toUrl(sym);
