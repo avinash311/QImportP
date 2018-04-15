@@ -8,7 +8,7 @@ QImportP
 
 This Windows JScript program:
     1) Extracts current price quotes from a CSV file on the web such as a
-       Google Spreadsheet or the AlphaVantage.co web interface.
+       Google Spreadsheet and/or the AlphaVantage.co web interface.
     If /automate is specified as an argument:
     2) starts Quicken (if not already started - but this is not reliable)
     3) sends keys to import the prices using Quicken's Import Prices command.
@@ -32,9 +32,8 @@ Options:
 
 automate   : Import prices into Quicken. If necessary, tries starting Quicken.
 gcsv       : Google Spreadsheet download-as-CSV URL
-             /gcsv: option does not support the /s or /div or /days option shown below.
-             Note that /s may soon stop working - it depends on Google Finance
-             Web page formats, and those are currently marked as being deprecated.
+             /gcsv: option does not use the /s or /div or /days option shown below.
+             It downloads all ticker symbols stored at the URL.
 
 dmy        : Output date format. Characters DMY are replaced with date values 
              (Default M/D/Y will convert 1st Aug 2017 to 08/01/2017)
@@ -48,6 +47,7 @@ avkey      : Your personal AlphaVantage key. See their doc: https://www.alphavan
 s          : List of comma-separated symbols for pricing (symbols in alphavantage.co format)
              Note: prefix symbol with "!" to ignore /div setting for that symbol
 days       : Number of days history to retrieve (default = 0, latest price only)
+             Note that only /avkey and /s API supports historical quotes, /gcsv does not.
 div        : Divide amounts by value, for converting pence into pounds, or any other division
              if the symbol is prefixed by "!", the /div conversion will be ignored for that symbol
 

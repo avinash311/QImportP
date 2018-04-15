@@ -1,3 +1,17 @@
+2018-04-15
+
+* Version 2.10
+
+* Added support for alphavantage.co API using their TIME_SERIES_DAILY
+  API to download current and historical quotes.
+
+* Both /gscv and /avkey can be used in one invocation to download prices
+  from Google Spreadsheet as well as AlphaVantage.co
+
+* google finance has disabled support for both
+  https://www.google.com/finance?q=VTSAX  and finance.google.com so that code
+  does not work anymore and will soon be removed.
+
 2017-12-04
 
 * Version 2.00

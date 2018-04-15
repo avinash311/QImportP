@@ -25,6 +25,8 @@ key:
 @REM /s:       symbols comma separated names, like "C,CSCO"
 @REM /div:100  Divide prices by 100 (can use any number instead of 100)
 @REM           If a symbol in "/s" is prefixed by "!" it will ignore /div for that symbol
+@REM /days:    download historical quotes for these many number of days in the past. 
+@REM           Note that only /avkey and /s API supports historical quotes, /gcsv does not."
 @REM --- edit the following lines, filling in correct Spreadsheet URL and updating args
 
 set WSFPATH=\bin\QImportP.wsf

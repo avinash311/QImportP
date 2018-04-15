@@ -3,7 +3,7 @@
 <job id="QImportP">
 <?job error="true" debug="true"?>
 <resource id="version">
-    2.00, 2017-12-04
+    2.10, 2018-04-15
 </resource>
 <resource id="homepage">
     http://www.aczoom.com/tech/import-prices-script-for-quicken/
@@ -42,7 +42,8 @@
     <named name = "gcsv"
         helpstring = "Google Spreadsheet download-as-CSV URL. This is very fast so use this whenever possible.
         This is also very flexible and supports numerous exchanges as well as currency exchange rate quotes.
-        Mutual fund quotes may be 2 business days old, though."
+        Mutual fund quotes may be 2 business days old, though. And this only supports current
+        quotes, no historial quotes are supported."
         type = "string" required = "false"/>
     <named name = "v"
         helpstring = "verbosity of messages; 0=ERROR,1=WARNING+ERROR, 2=INFO+WARNNG+ERROR. 3=DEBUG+INFO+WARNING+ERROR"
@@ -55,7 +56,8 @@
         type = "simple" required = "false"/>
 
     <named name = "days"
-        helpstring = "Get historical quotes for these many number of days (default 0 = current prices only)"
+        helpstring = "Get historical quotes for these many number of days (default 0 = current prices only)
+        Note that only /avkey and /s API supports historical quotes, /gcsv does not."
         type = "string" required = "false"/>
     <named name = "s"
         helpstring = "List of comma-separated symbols for pricing (Format [!][exchange:]SYM)
